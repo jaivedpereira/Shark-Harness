@@ -554,9 +554,30 @@ body::before{
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:900px){
-  .toast{bottom:calc(90px + env(safe-area-inset-bottom,0px))}
+  /* o aviso fica acima do campo de digitar, que agora é fixo */
+  .toast{bottom:calc(156px + env(safe-area-inset-bottom,0px))}
   .seg{margin-bottom:14px;width:100%;overflow-x:auto}
   .seg-item{flex:1;justify-content:center;white-space:nowrap}
   .prow{flex-wrap:wrap}
   .prow-info{flex:1 1 100%}
+
+  /* ── o campo de digitar fica PRESO embaixo, logo acima da barra de navegação ──
+     antes ele era o último item do fluxo e descia junto quando a conversa crescia */
+  #view-chat .composer{
+    position:fixed;z-index:35;
+    left:10px;right:10px;
+    bottom:calc(82px + env(safe-area-inset-bottom,0px));
+    max-width:none;
+    padding:8px;gap:7px;
+    background:var(--vidro);
+    -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+    border:1px solid var(--vidro-borda);
+    border-radius:var(--r-lg);
+    box-shadow:0 8px 26px rgba(0,0,0,.45);
+  }
+  #view-chat .composer textarea{background:transparent;border:none;padding:9px 10px}
+  /* o conteúdo precisa de folga para não ficar atrás do campo + da barra */
+  #view-chat{padding-bottom:calc(176px + env(safe-area-inset-bottom,0px))}
+  /* os chips de sugestão rolam por baixo, então ganham respiro extra */
+  #view-chat .suggest{margin-bottom:6px}
 }
