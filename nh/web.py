@@ -124,6 +124,16 @@ class Handler(BaseHTTPRequestHandler):
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
             return self._json(self._estado_plugins())
+        if rota == "/api/usage":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            dias = 30
+            try:
+                q = dict(pair.split("=", 1) for pair in urlparse(self.path).query.split("&") if "=" in pair)
+                dias = max(1, min(int(q.get("dias", 30)), 365))
+            except (ValueError, TypeError):
+                dias = 30
+            return self._json(self._uso(dias))
         return self._json({"error": "rota desconhecida"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -145,6 +155,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._salvar_config(body))
         if rota == "/api/plugins":
             return self._json(self._acao_plugin(body))
+        if rota == "/api/usage":
+            if str(body.get("acao") or "") == "limpar":
+                from . import usage
+
+                return self._json({"ok": True, "msg": usage.limpar(), "resumo": self._uso(30)})
+            return self._json(self._uso(30))
         if rota == "/api/config/testar":
             return self._json(self._testar_llm())
         return self._json({"error": "rota desconhecida"}, 404)
@@ -176,6 +192,16 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     # ------------------------------------------------------------------ loja ---
+    def _uso(self, dias: int = 30) -> dict:
+        """Histórico de uso do modelo (tokens e custo estimado)."""
+        from . import usage
+
+        try:
+            return usage.resumo(dias)
+        except Exception as exc:  # noqa: BLE001
+            return {"erro": f"{type(exc).__name__}: {exc}", "total": {}, "por_dia": [],
+                    "modelos": [], "ferramentas": []}
+
     def _estado_plugins(self) -> dict:
         """Estado do marketplace: instalados, disponíveis e kits."""
         from . import market

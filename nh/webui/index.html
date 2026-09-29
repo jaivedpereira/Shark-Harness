@@ -168,7 +168,24 @@
 
     <!-- ── Sistema ── -->
     <section class="view" id="view-sys">
-      <header class="vhead"><h2>Sistema</h2><p>Saúde do dispositivo onde o harness está rodando.</p></header>
+      <header class="vhead"><h2>Sistema</h2><p>Saúde do dispositivo e uso do modelo.</p></header>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="uso-head">
+          <h3>Uso do modelo</h3>
+          <div class="chips" id="usoDias">
+            <button class="chip active" data-dias="7">7 dias</button>
+            <button class="chip" data-dias="30">30 dias</button>
+            <button class="chip" data-dias="365">tudo</button>
+          </div>
+        </div>
+        <div class="uso-totais" id="usoTotais">carregando…</div>
+        <div class="uso-grafico" id="usoGrafico"></div>
+        <div class="uso-legenda" id="usoLegenda"></div>
+        <div class="uso-modelos" id="usoModelos"></div>
+        <button class="ghost small" id="usoLimpar" style="margin-top:14px">limpar histórico</button>
+      </div>
+
       <pre class="pre" id="sysInfo">carregando…</pre>
     </section>
 
@@ -191,7 +208,6 @@
           </label>
         </div>
         <p class="hint" id="cfgHint"></p>
-
         <label class="block">URL do endpoint
           <input id="cfgUrl" placeholder="https://…/chat/completions" />
         </label>
@@ -224,6 +240,21 @@
             <button class="ghost" id="cfgRemoveKey" type="button">Remover chave</button>
             <button class="primary" id="cfgSave" type="button">Salvar</button>
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Aparência</h3>
+        <div class="row">
+          <label>Tamanho dos itens da barra de baixo
+            <select id="cfgBarra">
+              <option value="normal">Normal — ícones e rótulos completos</option>
+              <option value="compacta">Compacta — ícones menores, sem rótulo</option>
+              <option value="minima">Mínima — só os ícones, barra fina</option>
+            </select>
+            <span class="hint">Vale só neste aparelho (fica salvo no navegador). Útil no celular,
+            onde a barra ocupa espaço da conversa.</span>
+          </label>
         </div>
       </div>
 

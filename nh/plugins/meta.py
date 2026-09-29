@@ -94,7 +94,53 @@ def audit_tail(linhas: int = 20) -> str:
     return "\n".join(out)
 
 
+def uso_do_modelo(dias: int = 30) -> str:
+    """Quanto de token o modelo já consumiu (hoje, na semana e no total).
+
+    Args:
+        dias: janela do histórico a considerar (padrão 30 dias).
+    """
+    from .. import usage
+
+    d = usage.resumo(int(dias))
+
+    def linha(rot: str, s: dict) -> str:
+        if not s or not s.get("execucoes"):
+            return f"   {rot:9}: nada registrado"
+        custo = ""
+        if s.get("custo"):
+            custo = f" · ~US$ {s['custo']:.4f}"
+        elif s.get("tem_modelo_sem_preco"):
+            custo = " · (modelo sem tabela de preço)"
+        n = s["execucoes"]
+        exec_txt = f"{n} execução" if n == 1 else f"{n} execuções"
+        return (f"   {rot:9}: {s['total']:,} tokens "
+                f"({s['entrada']:,} entrada + {s['saida']:,} saída) · "
+                f"{exec_txt}{custo}").replace(",", ".")
+
+    linhas = [
+        f"📊 USO DO MODELO — últimos {d['dias']} dias",
+        linha("hoje", d["hoje"]),
+        linha("7 dias", d["semana"]),
+        linha("total", d["total"]),
+    ]
+    if d["modelos"]:
+        linhas.append("   por modelo:")
+        for m in d["modelos"][:6]:
+            preco_txt = "" if m.get("preco_conhecido") else " (sem preço conhecido)"
+            n = m["execucoes"]
+            exec_txt = f"{n} execução" if n == 1 else f"{n} execuções"
+            linhas.append(f"     {m['modelo']}{preco_txt}: {m['total']:,} tokens "
+                          f"em {exec_txt}".replace(",", "."))
+    if d["ferramentas"]:
+        top = ", ".join(f"{nome} ({n}x)" for nome, n in d["ferramentas"][:5])
+        linhas.append(f"   ferramentas mais usadas: {top}")
+    linhas.append(f"   histórico: {d['arquivo']}")
+    return "\n".join(linhas)
+
+
 def register(reg: Registry) -> None:
     reg.add(list_tools, risk="safe", plugin="meta")
     reg.add(tool_help, risk="safe", plugin="meta")
+    reg.add(uso_do_modelo, risk="safe", plugin="meta")
     reg.add(audit_tail, risk="safe", plugin="meta")

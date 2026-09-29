@@ -134,6 +134,31 @@ no Chrome/Android aparece "Adicionar à tela inicial" — abre em tela cheia, se
 de navegador, com o ícone do emblema. No Termux, rode `termux-wake-lock` antes do
 `nh web` para o Android não matar o processo.
 
+O **campo de digitar fica preso** na parte de baixo, logo acima da barra de navegação:
+a conversa rola por trás dele, sem levar o campo junto.
+
+### 📊 Uso do modelo (tokens e custo)
+
+Cada execução do agente é registrada em `~/.shark-harness/usage.jsonl` (uma linha JSON,
+local, nunca enviada para fora). Isso alimenta:
+
+- **Sistema → Uso do modelo** na interface: totais de hoje / 7 dias / período, gráfico
+  dos últimos 14 dias e quebra por modelo, com **custo estimado em dólar**
+- `nh uso [dias]` no terminal
+- a ferramenta `uso_do_modelo`, que o próprio agente pode chamar — pergunte
+  *"quanto eu já gastei hoje?"* e ele responde com os números reais
+
+O custo é uma **estimativa** por uma tabela de preço por 1M de tokens (modelo `:free`
+entra como zero); modelo sem preço conhecido aparece como `—` em vez de um número
+inventado. Quem manda é a fatura do provedor.
+
+### 🎛️ Barra de baixo ajustável
+
+Em **Configurações → Aparência** dá para escolher o tamanho da barra de navegação no
+celular: **Normal** (ícone + rótulo), **Compacta** (menor, barra de 52px) ou **Mínima**
+(só ícones, barra de 42px). O campo de digitar acompanha, e a preferência fica salva
+no navegador daquele aparelho.
+
 ---
 
 ## 🚀 Uso rápido (CLI)
@@ -152,6 +177,8 @@ nh do port_check --args '{"porta": 8787}'
 nh do zipar --args '{"origem": "~/.shark-harness"}'
 
 nh audit                 # o que o harness executou (log de auditoria)
+nh uso                   # uso do modelo: tokens consumidos e custo estimado
+nh uso 7                 # janela de 7 dias · `nh uso --limpar` apaga o histórico
 ```
 
 > 💡 **Comece pelo `nh doctor`.** Ele testa criação de arquivo de verdade, checa as

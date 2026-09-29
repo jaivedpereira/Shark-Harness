@@ -581,3 +581,77 @@ body::before{
   /* os chips de sugestão rolam por baixo, então ganham respiro extra */
   #view-chat .suggest{margin-bottom:6px}
 }
+
+/* ══════════════════════════════════════════════════════════════
+   USO DO MODELO — totais, gráfico de barras e quebra por modelo
+   ══════════════════════════════════════════════════════════════ */
+.uso-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.uso-head h3{margin:0}
+.uso-totais{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0 18px}
+.ustat{
+  display:flex;flex-direction:column;gap:1px;
+  padding:12px 14px;border-radius:var(--r);
+  background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);
+}
+.ustat.on{background:rgba(77,148,255,.10);border-color:rgba(77,148,255,.28)}
+.ustat span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.ustat strong{font-size:22px;font-weight:700;letter-spacing:-.4px}
+.ustat small{font-size:10.5px;color:var(--muted)}
+.ustat em{font-size:11px;color:var(--ok);font-style:normal;margin-top:3px}
+.uso-grafico{
+  display:grid;grid-template-columns:repeat(14,1fr);gap:4px;
+  height:104px;align-items:end;padding:8px 0 0;
+}
+.ubar{
+  position:relative;height:100%;display:flex;flex-direction:column;
+  justify-content:flex-end;align-items:center;gap:4px;min-width:0;
+}
+.ubar .ufill{
+  width:100%;border-radius:5px 5px 3px 3px;
+  background:linear-gradient(180deg,rgba(77,148,255,.85),rgba(77,148,255,.35));
+  min-height:0;transition:height .25s;
+}
+.ubar.hoje .ufill{background:linear-gradient(180deg,#6aa8ff,rgba(106,168,255,.45))}
+.ubar span{font-size:8.5px;color:var(--muted);opacity:.75;line-height:1}
+.uso-legenda{font-size:11px;color:var(--muted);margin-top:10px}
+.uso-modelos{margin-top:6px}
+.umodel{
+  display:flex;align-items:center;gap:12px;padding:9px 4px;
+  border-bottom:1px solid var(--line);
+}
+.umodel:last-child{border-bottom:none}
+.umodel-info{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.umodel-info strong{font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.umodel-info span{font-size:11px;color:var(--muted)}
+.umodel-custo{font-size:12px;font-weight:600;color:var(--ok);white-space:nowrap}
+
+/* ══════════════════════════════════════════════════════════════
+   TAMANHO DA BARRA DE BAIXO (escolhido em Configurações → Aparência)
+   ══════════════════════════════════════════════════════════════ */
+@media(max-width:900px){
+  /* compacta: ícones menores e rótulos discretos */
+  body.barra-compacta .tabbar{padding:4px;border-radius:var(--r-lg)}
+  body.barra-compacta .tab{min-height:42px;padding:6px 2px;gap:1px;border-radius:13px}
+  body.barra-compacta .tab svg{width:17px;height:17px}
+  body.barra-compacta .tab span{font-size:8.5px}
+  body.barra-compacta #view-chat .composer{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+  body.barra-compacta #view-chat{padding-bottom:calc(154px + env(safe-area-inset-bottom,0px))}
+  body.barra-compacta .toast{bottom:calc(136px + env(safe-area-inset-bottom,0px))}
+
+  /* mínima: só ícone, barra fina */
+  body.barra-minima .tabbar{padding:3px;border-radius:var(--r);background:var(--vidro-forte)}
+  body.barra-minima .tab{min-height:34px;padding:4px 2px;border-radius:10px}
+  body.barra-minima .tab svg{width:15px;height:15px}
+  body.barra-minima .tab span{display:none}
+  body.barra-minima #view-chat .composer{bottom:calc(52px + env(safe-area-inset-bottom,0px))}
+  body.barra-minima #view-chat{padding-bottom:calc(142px + env(safe-area-inset-bottom,0px))}
+  body.barra-minima .toast{bottom:calc(124px + env(safe-area-inset-bottom,0px))}
+
+  /* no celular os totais ficam apertados em 3 colunas */
+  .uso-totais{gap:7px}
+  .ustat{padding:10px 11px}
+  .ustat strong{font-size:18px}
+  .uso-grafico{height:88px;gap:3px}
+  .uso-head{align-items:flex-start}
+}

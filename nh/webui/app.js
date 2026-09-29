@@ -67,6 +67,7 @@ function irPara(view) {
 
   if (view === "config") carregarConfig();
   else if (view === "tools") carregarLoja();
+  else if (view === "sys") carregarUso();
   else if (view === "audit" || view === "cron") loadState();
 }
 
@@ -226,7 +227,7 @@ function resumirTurno(turno, dados) {
   const partes = [];
   if (n) partes.push(`${n} passo${n > 1 ? "s" : ""}`);
   if (d.ferramentas && d.ferramentas.length) {
-    partes.push(`${d.ferramentas.length} ${d.ferramentas.length === 1 ? "ferramenta" : "ferramentas"}`);
+    partes.push(plural(d.ferramentas.length, "ferramenta", "ferramentas"));
   }
   if (d.total_tokens) partes.push(`${fmtNum(d.total_tokens)} tokens`);
   if (txt) txt.textContent = partes.length ? partes.join(" · ") : "resposta";
@@ -723,6 +724,134 @@ $("#btnRaciocinio").addEventListener("click", () => {
   aplicarPrefPassos();
 });
 aplicarPrefPassos();
+
+/* ═══════════════════════ uso do modelo ═══════════════════════ */
+let USO_DIAS = 7;
+let USO = null;
+
+function fmtTok(n) {
+  n = Number(n || 0);
+  if (n >= 1e6) return (n / 1e6).toFixed(2).replace(".", ",") + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(".", ",") + "k";
+  return String(n);
+}
+function fmtCusto(v, conhecido) {
+  if (!conhecido) return "—";
+  if (!v) return "US$ 0";
+  return "US$ " + (v < 0.01 ? v.toFixed(4) : v.toFixed(2));
+}
+
+/* plural sem o feio "1 item(s)" */
+function plural(n, um, muitos) {
+  return `${n} ${Number(n) === 1 ? um : muitos}`;
+}
+
+function statUso(rot, s, destaque) {
+  const vazio = !s || !s.execucoes;
+  const c = vazio ? "" : `<em>${fmtCusto(s.custo, s.custo_conhecido)}</em>`;
+  return `<div class="ustat${destaque ? " on" : ""}">
+      <span>${rot}</span>
+      <strong>${vazio ? "0" : fmtTok(s.total)}</strong>
+      <small>${vazio ? "nenhuma execução" : plural(s.execucoes, "execução", "execuções")}</small>
+      ${c}
+    </div>`;
+}
+
+async function carregarUso(dias) {
+  if (dias) USO_DIAS = dias;
+  try {
+    USO = await api(`/api/usage?dias=${USO_DIAS}`);
+  } catch (e) {
+    USO = { erro: String(e), por_dia: [], modelos: [], ferramentas: [] };
+  }
+  renderUso();
+}
+
+function renderUso() {
+  const d = USO || {};
+  if (d.erro) {
+    $("#usoTotais").innerHTML = `<span class="status err">não consegui ler o histórico: ${esc(d.erro)}</span>`;
+    return;
+  }
+  $("#usoTotais").innerHTML =
+    statUso("hoje", d.hoje, true) + statUso("7 dias", d.semana) + statUso(`total (${d.dias}d)`, d.total);
+
+  /* gráfico de barras dos últimos 14 dias */
+  const dias = d.por_dia || [];
+  const max = Math.max(1, ...dias.map((x) => Number(x.total || 0)));
+  const hoje = new Date().toISOString().slice(0, 10);
+  $("#usoGrafico").innerHTML = dias
+    .map((x) => {
+      const h = Math.round((Number(x.total || 0) / max) * 100);
+      const dia = String(x.dia || "").slice(8, 10) + "/" + String(x.dia || "").slice(5, 7);
+      return `<div class="ubar${x.dia === hoje ? " hoje" : ""}" title="${dia}: ${fmtTok(x.total)} tokens em ${plural(x.execucoes, "execução", "execuções")}">
+        <div class="ufill" style="height:${x.total ? Math.max(4, h) : 0}%"></div>
+        <span>${String(x.dia || "").slice(8, 10)}</span>
+      </div>`;
+    })
+    .join("");
+
+  const soma = dias.reduce((a, x) => a + Number(x.total || 0), 0);
+  $("#usoLegenda").textContent = soma
+    ? `últimos 14 dias: ${fmtTok(soma)} tokens · pico de ${fmtTok(max)} num dia`
+    : "nenhuma execução nos últimos 14 dias — converse com o agente que começa a registrar";
+
+  /* tabela por modelo */
+  const mods = d.modelos || [];
+  if (!mods.length) {
+    $("#usoModelos").innerHTML = "";
+    return;
+  }
+  $("#usoModelos").innerHTML =
+    `<h4 class="pgroup">Por modelo</h4>` +
+    mods
+      .map(
+        (m) => `<div class="umodel">
+        <div class="umodel-info">
+          <strong>${esc(String(m.modelo || "?").split("/").pop())}</strong>
+          <span>${fmtTok(m.total)} tokens · ↑${fmtTok(m.entrada)} ↓${fmtTok(m.saida)} · ${plural(m.execucoes, "execução", "execuções")}</span>
+        </div>
+        <div class="umodel-custo">${fmtCusto(m.custo, m.preco_conhecido)}</div>
+      </div>`
+      )
+      .join("");
+}
+
+$("#usoDias").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip");
+  if (!b) return;
+  document.querySelectorAll("#usoDias .chip").forEach((x) => x.classList.toggle("active", x === b));
+  carregarUso(Number(b.dataset.dias));
+});
+
+$("#usoLimpar").addEventListener("click", async () => {
+  if (!confirm("Apagar o histórico de uso do modelo? (não mexe em mais nada)")) return;
+  try {
+    await api("/api/usage", { method: "POST", body: { acao: "limpar" } });
+  } catch (_) {
+    /* sem endpoint de POST: limpa pelo lado de cá */
+  }
+  toast("histórico de uso apagado");
+  carregarUso();
+});
+
+/* ═══════════════════════ tamanho da barra de baixo ═══════════════════════ */
+const TAMANHOS_BARRA = ["normal", "compacta", "minima"];
+
+function aplicarBarra() {
+  let t = localStorage.getItem("nh_barra") || "normal";
+  if (!TAMANHOS_BARRA.includes(t)) t = "normal";
+  document.body.classList.remove("barra-normal", "barra-compacta", "barra-minima");
+  document.body.classList.add("barra-" + t);
+  const sel = $("#cfgBarra");
+  if (sel) sel.value = t;
+}
+$("#cfgBarra").addEventListener("change", (e) => {
+  localStorage.setItem("nh_barra", e.target.value);
+  aplicarBarra();
+  toast(`barra de baixo: ${e.target.value === "normal" ? "normal" : e.target.value === "compacta" ? "compacta" : "mínima"}`);
+});
+aplicarBarra();
 
 /* ───────────────── init ───────────────── */
 loadState();

@@ -198,6 +198,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_uso(args: argparse.Namespace) -> int:
+    """Uso do modelo: tokens consumidos e custo estimado."""
+    from . import usage
+
+    if getattr(args, "limpar", False):
+        print(usage.limpar())
+        return 0
+    reg = _load()
+    print(reg.dispatch("uso_do_modelo", {"dias": args.dias}))
+    return 0
+
+
 def cmd_plugin(args: argparse.Namespace) -> int:
     """Marketplace: catálogo, instalar, ativar/desativar e kits."""
     from . import market
@@ -421,6 +433,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     d2 = sub.add_parser("doctor", help="diagnóstico do ambiente (testa escrita de arquivo de verdade)")
     d2.set_defaults(func=cmd_doctor)
+
+    u = sub.add_parser("uso", help="uso do modelo: tokens e custo estimado")
+    u.add_argument("dias", nargs="?", type=int, default=30, help="janela em dias (padrão 30)")
+    u.add_argument("--limpar", action="store_true", help="apaga o histórico de uso")
+    u.set_defaults(func=cmd_uso)
 
     pl = sub.add_parser("plugin", help="marketplace: catálogo, instalar, ativar/desativar, kits")
     pl.add_argument("action", choices=["catalogo", "listar", "procurar", "info", "instalar",

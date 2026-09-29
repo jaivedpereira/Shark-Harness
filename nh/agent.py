@@ -143,6 +143,21 @@ def run_agent(
     uso_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     ferramentas_usadas: list[str] = []
 
+    def _fechar_uso(rodadas: int) -> None:
+        """Grava o consumo no histórico local (a aba de uso lê daí)."""
+        try:
+            from . import usage
+
+            usage.registrar(
+                model,
+                uso_total["prompt_tokens"],
+                uso_total["completion_tokens"],
+                rodadas=rodadas,
+                ferramentas=ferramentas_usadas,
+            )
+        except Exception:  # noqa: BLE001 — telemetria nunca derruba a tarefa
+            pass
+
     for rodada in range(1, max_rounds + 1):
         ultima = rodada >= max_rounds
 
@@ -203,6 +218,7 @@ def run_agent(
                 "modelo": model,
                 "ferramentas": ferramentas_usadas,
             }, ensure_ascii=False))
+            _fechar_uso(rodada)
             step("resposta", "", text)
             return text
 
@@ -210,6 +226,7 @@ def run_agent(
             # não devia acontecer (mandamos tools=[]), mas nunca ficamos em silêncio
             texto = ("⚠️ Usei todas as rodadas sem fechar a resposta. "
                      "Me peça para continuar de onde parou.")
+            _fechar_uso(rodada)
             step("erro", "loop", texto)
             return texto
 
@@ -240,6 +257,7 @@ def run_agent(
     # deveria ser alcançado, mas se for, o usuário recebe um convite a continuar
     limite = ("⚠️ Parei no limite de rodadas antes de fechar. "
               "Peça para continuar de onde parou e eu sigo.")
+    _fechar_uso(max_rounds)
     step("erro", "loop", limite)
     return limite
 
