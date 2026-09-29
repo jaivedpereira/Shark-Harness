@@ -19,9 +19,15 @@ import sys
 from . import __version__, agent, mcp_server, scheduler
 from .core import Registry, load_plugins
 from .guard import AUDIT_FILE
-from .paths import HOME, WORKSPACE, ensure_dirs, platform_name
+from .paths import HOME, WORKSPACE, ensure_dirs, env, platform_name
 
 RISKS = ("safe", "write", "exec", "danger")
+
+# O default do --risk vem do ambiente/.env — senão o argparse sempre venceria o
+# SHARK_MAX_RISK definido no .env.
+RISCO_PADRAO = env("MAX_RISK", "exec")
+if RISCO_PADRAO not in RISKS:
+    RISCO_PADRAO = "exec"
 
 
 def _colors() -> dict[str, str]:
@@ -220,15 +226,15 @@ def _fail(msg: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="nh",
-        description="nano-harness — agente de tarefas com arquitetura tudo-é-plugin.",
+        description="🦈 Shark Harness — agente de tarefas com arquitetura tudo-é-plugin.",
         epilog='exemplo: nh run "checa o sysinfo e cria um backup do workspace"',
     )
-    p.add_argument("--version", action="version", version=f"nano-harness {__version__}")
+    p.add_argument("--version", action="version", version=f"Shark Harness {__version__}")
     sub = p.add_subparsers(dest="cmd")
 
     r = sub.add_parser("run", help="pede algo ao agente (LLM + ferramentas)")
     r.add_argument("prompt", nargs="+")
-    r.add_argument("--risk", choices=RISKS, default="exec", help="risco máximo exposto ao LLM")
+    r.add_argument("--risk", choices=RISKS, default=RISCO_PADRAO, help="risco máximo exposto ao LLM")
     r.add_argument("--quiet", dest="verbose", action="store_false", help="só a resposta final")
     r.set_defaults(func=cmd_run)
 
@@ -255,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(func=cmd_cron)
 
     i = sub.add_parser("info", help="estado do harness e do dispositivo")
-    i.add_argument("--risk", choices=RISKS, default="exec")
+    i.add_argument("--risk", choices=RISKS, default=RISCO_PADRAO)
     i.set_defaults(func=cmd_info)
 
     a = sub.add_parser("audit", help="últimas ações executadas")
@@ -271,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--port", type=int, default=8787)
     w.add_argument("--host", default="", help="IP para escutar (default 127.0.0.1)")
     w.add_argument("--all", action="store_true", help="escuta em 0.0.0.0 (exige token)")
-    w.add_argument("--risk", choices=RISKS, default="exec")
+    w.add_argument("--risk", choices=RISKS, default=RISCO_PADRAO)
     w.add_argument("--no-open", action="store_true", help="não abrir o navegador")
     w.set_defaults(func=cmd_web)
 

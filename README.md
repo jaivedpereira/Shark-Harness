@@ -21,20 +21,46 @@ O mesmo registry de ferramentas alimenta **quatro frentes**:
 
 ## ⚡ Instalação
 
-```bash
-tar -xzf shark-harness-0.1.0.tar.gz && cd nano-harness
-./install.sh              # núcleo + CLI + interface web
-./install.sh --with-mcp    # adiciona o servidor MCP (não no Termux)
-```
-
-**Windows (PowerShell)**
+### 🪟 Windows (PowerShell — recomendado)
+1. Instale o **Python 3** de https://www.python.org/downloads/ — na primeira tela
+   **marque “Add python.exe to PATH”**.
+2. Abra a pasta do projeto, clique com o botão direito em um espaço vazio →
+   **“Abrir no Terminal”** (ou shift+clique direito → “Abrir janela do PowerShell aqui”).
+3. Rode:
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\pip install -e .
-.\.venv\Scripts\nh.exe info
+.\install.ps1
+```
+Se aparecer erro de política de execução, rode antes:
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-**Termux (Android)**
+Depois disso use os atalhos `.bat` (não precisa mexer em PATH):
+```bat
+nh.bat info                  :: estado do harness + relatório do PC
+nh.bat tools                 :: lista as 29 ferramentas
+nh.bat run "checa o sistema"  :: agente
+run_web.bat                  :: 🦈 interface no navegador (localhost:8787)
+run_scheduler.bat            :: liga o agendador em segundo plano
+run_scheduler.bat stop       :: para o agendador
+```
+
+> **Chave do LLM no Windows:** o próprio Python lê o arquivo `.env` (o
+> `install.ps1` já cria um a partir do `.env.example`). Abra o `.env` no Bloco de
+> Notas, cole a chave em `SHARK_LLM_KEY=` e salve. Vale para a CLI, a interface e
+> o agente. O `.env` está no `.gitignore` — nunca vai pro Git.
+
+### 🐧 Linux / macOS
+```bash
+./install.sh              # núcleo + CLI + interface web
+./install.sh --with-mcp    # adiciona o servidor MCP
+./run_web.sh               # interface
+./run_scheduler.sh start   # agendador em segundo plano
+```
+> Se você baixou o **.zip** (e não o .tar.gz ou um clone do Git), o ZIP não guarda
+> a permissão de execução — use `bash install.sh` em vez de `./install.sh`.
+
+### 📱 Termux (Android)
 ```bash
 pkg install python && pkg install termux-api
 pip install -e .        # NÃO instale mcp[cli] — veja o aviso abaixo
@@ -180,6 +206,9 @@ locais e auditáveis.
 
 ```
 shark-harness/
+├── install.sh / install.ps1   # instaladores (Linux/macOS · Windows)
+├── nh.bat / run_web.bat / run_scheduler.bat   # atalhos para Windows
+├── run_web.sh / run_scheduler.sh              # atalhos para Linux/macOS
 ├── nh/
 │   ├── core.py        # registry + descoberta de plugins + schema do docstring
 │   ├── guard.py       # deny-lists, auditoria, níveis de risco
@@ -188,7 +217,7 @@ shark-harness/
 │   ├── cli.py         # a CLI `nh`
 │   ├── mcp_server.py  # servidor MCP stdio (SDK opcional)
 │   ├── web.py         # interface web (http.server da stdlib)
-│   ├── paths.py       # ~/.shark-harness, workspace, detecção de plataforma
+│   ├── paths.py       # ~/.shark-harness, workspace, .env, plataforma
 │   ├── webui/         # index.html · style.css · app.js (tema azul/preto + tubarão)
 │   └── plugins/       # shell, code, files, schedule, device, sysinfo, meta
 └── tests/

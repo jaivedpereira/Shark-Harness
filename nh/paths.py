@@ -6,6 +6,34 @@ import os
 import sys
 from pathlib import Path
 
+
+def _carregar_env_arquivo(caminho: Path) -> None:
+    """Lê KEY=VALUE de um .env e injeta no ambiente (sem sobrescrever o que já existe).
+
+    Isso faz o .env funcionar em qualquer frente (CLI, web, agente) e em qualquer
+    sistema — no Windows não existe `source .env`, então o carregamento tem que
+    ser do próprio Python.
+    """
+    try:
+        if not caminho.is_file():
+            return
+        for linha in caminho.read_text(encoding="utf-8", errors="replace").splitlines():
+            linha = linha.strip()
+            if not linha or linha.startswith("#") or "=" not in linha:
+                continue
+            chave, _, valor = linha.partition("=")
+            chave = chave.strip()
+            valor = valor.strip().strip('"').strip("'")
+            if chave and chave not in os.environ:
+                os.environ[chave] = valor
+    except Exception:  # noqa: BLE001 — .env quebrado nunca deve derrubar o harness
+        pass
+
+
+# ordem: ./.env (pasta do projeto) e depois ~/.shark-harness/.env
+for _cand in (Path.cwd() / ".env", Path.home() / ".shark-harness" / ".env"):
+    _carregar_env_arquivo(_cand)
+
 def env(nome: str, default: str = "") -> str:
     """Lê config aceitando os dois prefixos: SHARK_<nome> e depois NH_<nome>.
 
