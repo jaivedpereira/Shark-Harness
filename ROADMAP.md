@@ -1,11 +1,147 @@
 # 🗺️ Roadmap de plugins do Shark Harness
 
+> Antes de tudo: existe uma diferença entre **ferramenta nova** e **capacidade nova**.
+> `git_status` é uma ferramenta. Um plugin que *escreve outros plugins* é capacidade.
+> A seção **"Nível insano"** no fim deste arquivo é sobre o segundo tipo.
+
 Hoje: **46 ferramentas em 11 plugins**. Como tudo é plugin, cada ideia abaixo é
 literalmente **um arquivo novo** em `nh/plugins/` — nenhuma exige mexer no núcleo.
 
 Regra que eu uso para priorizar: **resolve uma dor repetida?** Se sim, entra na fila
 de cima. Se é só legal, vai para os absurdos (que também têm valor: testam o limite
 da arquitetura).
+
+---
+
+## 🧠 NÍVEL INSANO — plugins que dão uma CAPACIDADE nova
+
+Estes não adicionam ferramentas: mudam o que o harness **é**. Ordenados por
+insanidade útil × viabilidade (do mais impressionante para o mais tranquilo).
+
+### 1. `fabrica` — o harness que escreve os próprios plugins 👑
+**O mais insano de todos, e é viável hoje.** O agente já tem `write_file`,
+`run_python` e `check_syntax`; falta ele saber montar um plugin e recarregar.
+
+```
+fabrica_plugin   # descreve em português -> gera nh/plugins/x.py completo
+testar_plugin    # roda a suite, confere docstring/type hints/risco
+instalar_plugin  # valida e recarrega o registry a quente, sem reiniciar
+plugins_criados  # lista o que ele mesmo criou
+desfazer_plugin  # remove e restaura o registry anterior
+```
+
+Você pede no chat *"quero que ele saiba calcular juros compostos"* e ele **escreve
+a ferramenta, testa e passa a usar**. O harness cresce sozinho — e o melhor: o
+`sandbox_antes` (item 6) obriga isso a passar pela guarda antes de instalar.
+
+### 2. `pipeline` — compor ferramentas em macros nomeadas
+O salto de "tenho 46 ferramentas" para "tenho 46 ferramentas **encadeadas**".
+
+```
+fluxo_criar    # "backup completo" = zipar -> sha256 -> enviar telegram
+fluxo_rodar    # roda o encadeamento, com condição e repetição por item
+fluxo_listar · fluxo_agendar   # e o mesmo fluxo vira tarefa agendada
+```
+
+Um pipeline é um JSON com passos que reusam ferramentas existentes — dá para
+combinar as 46 em centenas de rotinas sem escrever Python nenhuma vez.
+
+### 3. `memoria` — o harness lembrar de você para sempre
+Hoje ele esquece tudo entre execuções. Com isto, o que você fala uma vez vale
+para sempre.
+
+```
+lembrar      # "meu wifi é X", "o deploy do Manganana é na Vercel"
+recordar     # busca por assunto antes de agir
+esquecer · memoria_listar
+```
+
+O gancho técnico: o agente **consulta a memória no início de toda tarefa** — é o
+mesmo padrão que eu uso. Sem isso, você repete contexto toda vez.
+
+### 4. `rotina_aprendida` — ler o próprio log e sugerir automação
+O `audit.log` já registra tudo. Ninguém usa. Este plugin **usa**: acha padrão
+repetido e propõe criar o job.
+
+```
+analisar_rotina   # "toda terça 14h você roda o mesmo backup — crio o job?"
+sugerir_automacao # agrupa comandos parecidos e mede o tempo que você perde
+```
+
+Algoritmo clássico (frequência + similaridade + janela de tempo), sem LLM — dá
+para fazer determinístico e barato. É automação que **se descobre sozinha**.
+
+### 5. `visao` — entender uma imagem e agir
+Você me manda print o tempo todo. O harness ainda não enxerga.
+
+```
+ler_imagem     # OCR: extrai o texto de um print ou foto
+descrever      # resumo do que tem na tela (com modelo multimodal, se houver)
+diagnosticar   # print de erro -> acha a causa e propõe a correção
+comparar       # duas imagens: o que mudou
+```
+
+O fluxo que isso habilita: `device_screenshot` -> `ler_imagem` -> agente -> fix.
+Você manda um print de erro no Telegram e ele responde com a correção.
+
+### 6. `sandbox_antes` — prever o estrago antes de fazer
+Um harness que executa precisa saber o que vai acontecer **antes**.
+
+```
+simular        # roda o comando num ambiente descartável e mostra o efeito
+prever_efeito  # "isto vai apagar 412 arquivos e 3,1 GB" — antes de perguntar
+```
+
+No PC, container descartável; no Termux, cópia do diretório alvo num tmpfs. É o
+que transforma "espero que esteja certo" em "eu sei o que vai acontecer".
+
+### 7. `cofre` — o LLM usa a senha sem nunca ver a senha
+Arquitetura de segurança, não ferramenta.
+
+```
+cofre_guardar  # cifra um segredo com chave derivada da senha mestra
+cofre_listar   # devolve só os NOMES, nunca os valores
+cofre_usar     # injeta a credencial no comando, o modelo vê apenas {{cofre:x}}
+```
+
+Assim o modelo pode rodar `curl -H "token: {{cofre:github}}"` e o valor real
+nunca entra no contexto dele — nem no log de auditoria (que já mascara segredos).
+
+### 8. `guardiao` — auto-cura
+Hoje o agendador roda tarefas. Com isto, ele **reage**.
+
+```
+proteger_servico  # vigia porta/processo e reinicia se cair
+em_caso_de_falha  # gatilho: se X falhar -> roda Y -> me notifica
+auto_recuperar    # retenta com espera crescente antes de desistir
+```
+
+Ex.: se o `nh web` morrer às 3h, ele reinicia, testa e só te incomoda se não
+conseguir — em vez de descobrir de manhã que está tudo fora do ar.
+
+### 9. `pc_remoto` — o celular comandando o PC
+O harness roda nos dois; falta eles se falarem.
+
+```
+pc_conectar    # SSH do Termux para o Windows (ou o contrário)
+pc_rodar       # manda a tarefa pesada para o PC e traz o resultado
+pc_enviar · pc_puxar
+```
+
+O caso insano: *"compila o projeto no PC, zipa e me manda o arquivo aqui no
+celular"* — você pede do ônibus e chega em casa pronto.
+
+### 10. `agenda_viva` — o agendador que conhece a tua vida
+O `schedule` atual só entende cron. Este entende contexto.
+
+```
+horario_livre   # sabe que qua/qui você está na escola das 5h35 às 19h30
+agendar_inteligente  # "roda isso quando eu estiver em casa" -> escolhe o horário
+modo_escola · modo_estudo
+```
+
+Ele já sabe que terça é treino A e sábado é treino C (está no JAI 2.0). Juntando,
+o agendador deixa de ser um relógio e vira alguém que sabe quando você pode.
 
 ---
 
