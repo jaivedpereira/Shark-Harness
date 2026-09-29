@@ -703,10 +703,88 @@ function atualizarDatalist(pid) {
   (p && p.models ? p.models : []).forEach((m) => {
     const o = el("option"); o.value = m; dl.append(o);
   });
+  const tipo = p && p.tipo === "local"
+    ? `<span class="rtag r-safe">🏠 local, sem chave</span>`
+    : `<span class="rtag r-write">☁️ nuvem, precisa de chave</span>`;
   $("#cfgHint").innerHTML = p && p.hint
-    ? esc(p.hint) + (p.key_url ? ` — <a href="${esc(p.key_url)}" target="_blank" rel="noopener">pegar chave</a>` : "")
-    : "";
+    ? tipo + " " + esc(p.hint) +
+      (p.key_url ? ` — <a href="${esc(p.key_url)}" target="_blank" rel="noopener">pegar chave</a>` : "")
+    : tipo;
 }
+
+/* busca a lista REAL de modelos no endpoint configurado */
+let CFG_LISTA = [];
+
+async function buscarModelosConfig() {
+  const st = $("#cfgStatus");
+  const url = $("#cfgUrl").value.trim();
+  const p = (CONFIG.providers || []).find((x) => x.id === $("#cfgProvider").value);
+  const local = p && p.tipo === "local";
+  if (!url) {
+    st.className = "status err";
+    st.textContent = "informe a URL do endpoint primeiro";
+    return;
+  }
+  if (!local && !$("#cfgKey").value.trim() && !(CONFIG.atual || {}).tem_chave) {
+    st.className = "status err";
+    st.textContent = "cole a chave para o provedor deixar listar os modelos";
+    return;
+  }
+  st.className = "status";
+  st.textContent = "perguntando ao provedor…";
+  $("#cfgBuscar").disabled = true;
+  try {
+    const r = await api("/api/modelos", {
+      method: "POST",
+      body: { acao: "disponiveis", url, chave: $("#cfgKey").value },
+    });
+    if (!r.ok) {
+      st.className = "status err";
+      st.textContent = r.erro || "não consegui buscar a lista";
+      $("#cfgLista").style.display = "none";
+      return;
+    }
+    CFG_LISTA = r.modelos || [];
+    $("#cfgLista").style.display = "";
+    $("#cfgFiltro").value = "";
+    renderItensConfig("");
+    st.className = "status ok";
+    const gratis = (r.gratis || []).length;
+    st.textContent = `✅ ${r.total} modelo(s) disponíveis${gratis ? ` · ${gratis} grátis` : ""}`;
+  } catch (e) {
+    st.className = "status err";
+    st.textContent = String(e);
+  }
+  $("#cfgBuscar").disabled = false;
+}
+
+function renderItensConfig(filtro) {
+  const box = $("#cfgItens");
+  const f = String(filtro || "").toLowerCase().trim();
+  const itens = f ? CFG_LISTA.filter((m) => m.id.toLowerCase().includes(f)) : CFG_LISTA;
+  box.innerHTML = "";
+  if (!itens.length) {
+    box.append(el("p", "hint", "nenhum modelo com esse filtro"));
+    return;
+  }
+  const jaSoGratis = f.includes("free") || f.includes("gratis");
+  itens.slice(0, 300).forEach((m) => {
+    const gratis = m.id.includes(":free");
+    const b = el("button", "mitem" + (gratis ? " livre" : ""));
+    b.type = "button";
+    b.innerHTML = `<span class="mid">${esc(m.id)}</span>` +
+      (gratis && !jaSoGratis ? `<span class="rtag r-safe">grátis</span>` : "");
+    b.addEventListener("click", () => {
+      $("#cfgModel").value = m.id;
+      $("#cfgLista").style.display = "none";
+      toast(`modelo escolhido: ${m.id}`, "ok");
+    });
+    box.append(b);
+  });
+}
+
+$("#cfgBuscar").addEventListener("click", buscarModelosConfig);
+$("#cfgFiltro").addEventListener("input", (e) => renderItensConfig(e.target.value));
 
 $("#cfgProvider").addEventListener("change", (e) => {
   const pid = e.target.value;
@@ -1248,8 +1326,8 @@ function renderSessaoPick() {
   });
 }
 
-function abrirSesModal() { $("#sesModal").classList.add("show"); renderSessaoPick(); }
-function fecharSesModal() { $("#sesModal").classList.remove("show"); }
+function abrirSesModal() { $("#sesModal").classList.add("open"); renderSessaoPick(); }
+function fecharSesModal() { $("#sesModal").classList.remove("open"); }
 
 $("#sbarPick").addEventListener("click", abrirSesModal);
 $("#sesModalClose").addEventListener("click", fecharSesModal);
@@ -1307,13 +1385,13 @@ async function abrirFS(pasta) {
     b.addEventListener("click", () => abrirFS(p.caminho));
     lista.append(b);
   });
-  $("#fsModal").classList.add("show");
+  $("#fsModal").classList.add("open");
 }
-$("#fsClose").addEventListener("click", () => $("#fsModal").classList.remove("show"));
+$("#fsClose").addEventListener("click", () => $("#fsModal").classList.remove("open"));
 $("#fsAcima").addEventListener("click", (e) => { if (e.target.dataset.alvo) abrirFS(e.target.dataset.alvo); });
 $("#fsUsar").addEventListener("click", () => {
   $("#sesPasta").value = FS_ATUAL;
-  $("#fsModal").classList.remove("show");
+  $("#fsModal").classList.remove("open");
   if (!$("#sesNome").value.trim()) {
     $("#sesNome").value = FS_ATUAL.split("/").filter(Boolean).pop() || "projeto";
   }
@@ -1542,12 +1620,155 @@ async function removerModelo(m) {
   await loadState();
 }
 
+/* ── formulário: provedor, busca de modelos e sugestão de nível ── */
+
+/* heurística: pelo nome do modelo já dá para chutar o nível certo */
+function sugerirNivel(nome) {
+  const n = String(nome || "").toLowerCase();
+  const rapido = [":free", "mini", "flash", "instant", "lite", "small", "nano", "8b", "3b", "1b"];
+  const potente = ["70b", "120b", "405b", "pro", "large", "sonnet", "opus", "reasoner",
+                   "coder", "r1", "thinking", "max"];
+  if (potente.some((p) => n.includes(p))) return 3;
+  if (rapido.some((p) => n.includes(p))) return 1;
+  return 2;
+}
+
+function preencherProvedores() {
+  const sel = $("#mProvedor");
+  if (!sel || sel.options.length) return;
+  const provs = (MODELOS.provedores || []).slice().sort((a, b) => {
+    // locais primeiro? não: nuvem primeiro, 'custom' por último
+    const peso = (p) => (p.id === "custom" ? 2 : p.tipo === "local" ? 1 : 0);
+    return peso(a) - peso(b) || String(a.label).localeCompare(String(b.label));
+  });
+  provs.forEach((p) => {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = (p.tipo === "local" ? "🏠 " : "") + p.label;
+    sel.append(o);
+  });
+}
+
+function aplicarProvedor(pid) {
+  const p = (MODELOS.provedores || []).find((x) => x.id === pid);
+  const dica = $("#mProvedorDica");
+  const link = $("#mLinkChave");
+  if (!p) return;
+  if (p.url) $("#mUrl").value = p.url;
+  dica.textContent = p.hint || "";
+  if (p.key_url && p.precisa_chave) {
+    link.href = p.key_url;
+    link.style.display = "";
+    link.textContent = "pegar a chave";
+  } else if (p.tipo === "local") {
+    link.href = p.key_url || "#";
+    link.style.display = p.key_url ? "" : "none";
+    link.textContent = "como instalar";
+  } else {
+    link.style.display = "none";
+  }
+}
+
+async function buscarModelos() {
+  const st = $("#mBuscaStatus");
+  const url = $("#mUrl").value.trim();
+  if (!url) {
+    st.className = "status err";
+    st.textContent = "informe o endpoint primeiro";
+    return;
+  }
+  st.className = "status";
+  st.textContent = "perguntando ao provedor…";
+  $("#mBuscar").disabled = true;
+  try {
+    const r = await api("/api/modelos", {
+      method: "POST",
+      body: { acao: "disponiveis", url, chave: $("#mChave").value },
+    });
+    if (!r.ok) {
+      st.className = "status err";
+      st.textContent = r.erro || "não consegui buscar";
+      $("#mLista").style.display = "none";
+      if (r.provider) {
+        const p = (MODELOS.provedores || []).find((x) => x.id === r.provider);
+        if (p && p.key_url && p.precisa_chave) {
+          $("#mLinkChave").href = p.key_url;
+          $("#mLinkChave").style.display = "";
+        }
+      }
+      return;
+    }
+    st.className = "status ok";
+    const gratis = (r.gratis || []).length;
+    st.textContent = `${r.total} modelo(s)${gratis ? ` · ${gratis} grátis` : ""}`;
+    M_LISTA = r.modelos || [];
+    $("#mLista").style.display = "";
+    $("#mFiltro").value = "";
+    renderItensModelos("");
+  } catch (e) {
+    st.className = "status err";
+    st.textContent = String(e);
+  }
+  $("#mBuscar").disabled = false;
+}
+
+let M_LISTA = [];
+
+function renderItensModelos(filtro) {
+  const box = $("#mItens");
+  const f = String(filtro || "").toLowerCase().trim();
+  const itens = f ? M_LISTA.filter((m) => m.id.toLowerCase().includes(f)) : M_LISTA;
+  box.innerHTML = "";
+  if (!itens.length) {
+    box.append(el("p", "hint", "nenhum modelo com esse filtro"));
+    return;
+  }
+  // com o filtro "free" ligado, marcar cada linha como grátis é ruído — o próprio
+  // filtro já disse isso. Fora disso, a marca ajuda a achar o que não custa nada.
+  const jaSoGratis = f.includes("free") || f.includes("gratis");
+  itens.slice(0, 300).forEach((m) => {
+    const gratis = m.id.includes(":free");
+    const b = el("button", "mitem" + (gratis ? " livre" : ""));
+    b.type = "button";
+    b.innerHTML = `<span class="mid">${esc(m.id)}</span>` +
+      (gratis && !jaSoGratis ? `<span class="rtag r-safe">grátis</span>` : "");
+    b.title = m.id;
+    b.addEventListener("click", () => escolherDaLista(m.id));
+    box.append(b);
+  });
+  if (itens.length > 300) {
+    box.append(el("p", "hint", `mostrando 300 de ${itens.length} — refine o filtro`));
+  }
+}
+
+function escolherDaLista(nome) {
+  $("#mModelo").value = nome;
+  if (!$("#mApelido").value.trim()) {
+    $("#mApelido").value = nome.split("/").pop().replace(/:free$/, "");
+  }
+  const nivel = sugerirNivel(nome);
+  $("#mNivel").value = String(nivel);
+  $("#mLista").style.display = "none";
+  const info = (MODELOS.niveis || []).find((n) => Number(n.nivel) === nivel);
+  toast(`escolhido: ${nome.split("/").pop()} — nível sugerido ${info ? info.nome : nivel}`, "ok");
+}
+
+$("#mBuscar").addEventListener("click", buscarModelos);
+$("#mFiltro").addEventListener("input", (e) => renderItensModelos(e.target.value));
+$("#mProvedor").addEventListener("change", (e) => aplicarProvedor(e.target.value));
+$("#mUrl").addEventListener("change", () => {
+  // digitou uma URL na mão: tenta casar com um provedor conhecido
+  const p = (MODELOS.provedores || []).find((x) => x.url === $("#mUrl").value.trim());
+  if (p) $("#mProvedor").value = p.id;
+});
+
 $("#btnModelo").addEventListener("click", async () => {
-  $("#modelModal").classList.add("show");
+  $("#modelModal").classList.add("open");
   limparFormModelo();
   await carregarModelos();
+  preencherProvedores();
 });
-$("#modelModalClose").addEventListener("click", () => $("#modelModal").classList.remove("show"));
+$("#modelModalClose").addEventListener("click", () => $("#modelModal").classList.remove("open"));
 $("#mSalvar").addEventListener("click", salvarModelo);
 $("#mCancelar").addEventListener("click", limparFormModelo);
 (function niveisSelect() {
@@ -1586,7 +1807,9 @@ $("#mCancelar").addEventListener("click", limparFormModelo);
 /* Esc fecha qualquer modal aberto */
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  document.querySelectorAll(".modal.show").forEach((m) => m.classList.remove("show"));
+  document.querySelectorAll(".modal.open, .modal.show").forEach((m) => {
+    m.classList.remove("open", "show");
+  });
 });
 
 /* atalho: Ctrl/Cmd + K foca o campo de digitar */

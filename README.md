@@ -228,6 +228,28 @@ a conversa rola por trás dele, sem levar o campo junto.
 O harness nasceu com **um** modelo. Agora você cadastra quantos quiser, cada um com o seu
 **endpoint** e o seu **nível** — e troca no topo do chat com um toque.
 
+### 🌐 16 provedores prontos — e ele **busca a lista real de modelos**
+
+Em vez de decorar nomes de modelo, escolha o provedor e clique em **🔍 buscar modelos**:
+o harness pergunta ao endpoint (`/v1/models`) quais modelos existem e mostra a lista para
+você escolher, com filtro. No OpenRouter isso são **mais de 400 modelos** (e ele diz quantos
+são grátis). Ao clicar num modelo, o **nível já vem sugerido** pelo nome
+(`:free`/`mini` → ⚡ rápido, `70b`/`pro`/`coder` → 🧠 potente).
+
+| tipo | provedores |
+|---|---|
+| ☁️ **nuvem** | OpenRouter · Groq · DeepSeek · Mistral · Google Gemini · Cerebras · Together · Fireworks · xAI (Grok) · OpenAI · Anthropic · OpenCode Zen |
+| 🏠 **local, sem chave** | Ollama · LM Studio · llama.cpp server |
+| 🔧 | Personalizado (qualquer endpoint OpenAI-compatível) |
+
+Cada provedor já vem com a dica, o tipo e o **link direto para pegar a chave**.
+E o harness **reconhece o provedor pela URL** — inclusive separando Ollama (11434),
+LM Studio (1234) e llama.cpp (8080), que vivem todos em `localhost`.
+
+> 💡 Se a listagem falhar, a mensagem diz o porquê em português: *"a chave foi recusada —
+> confira se ela é desse provedor"*, *"esse provedor não expõe lista de modelos"*,
+> *"rate-limit ao pedir a lista"*.
+
 | nível | para quê |
 |---|---|
 | ⚡ **Rápido** | respostas curtas e baratas, o dia a dia |

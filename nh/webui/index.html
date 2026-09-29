@@ -256,7 +256,17 @@
             <datalist id="cfgModels"></datalist>
           </label>
         </div>
-        <p class="hint" id="cfgHint"></p>
+        <div class="row between">
+          <p class="hint" id="cfgHint"></p>
+          <div class="row-actions">
+            <button class="ghost small" id="cfgBuscar" type="button">🔍 buscar modelos</button>
+          </div>
+        </div>
+        <div class="mlista" id="cfgLista" style="display:none">
+          <input class="mfiltro" id="cfgFiltro"
+                 placeholder="filtrar a lista real do provedor (ex: free, coder, 70b)" />
+          <div class="mitens" id="cfgItens"></div>
+        </div>
         <label class="block">URL do endpoint
           <input id="cfgUrl" placeholder="https://…/chat/completions" />
         </label>
@@ -411,34 +421,53 @@
 
     <details class="madd" id="modelAdd">
       <summary>➕ Adicionar um modelo</summary>
+
       <div class="row">
-        <label>Apelido
-          <input id="mApelido" placeholder="Nemotron grátis" />
+        <label>Provedor
+          <select id="mProvedor"></select>
         </label>
         <label>Nível
           <select id="mNivel"></select>
         </label>
       </div>
+      <p class="hint" id="mProvedorDica">Escolha o provedor: a URL e o link da chave se
+      preenchem sozinhos.</p>
+
       <label class="block">Endpoint (URL do provedor)
-        <input id="mUrl" list="urlsComuns" placeholder="https://openrouter.ai/api/v1/chat/completions" />
+        <input id="mUrl" placeholder="https://openrouter.ai/api/v1/chat/completions" />
       </label>
-      <datalist id="urlsComuns">
-        <option value="https://openrouter.ai/api/v1/chat/completions"></option>
-        <option value="https://api.groq.com/openai/v1/chat/completions"></option>
-        <option value="https://api.deepseek.com/v1/chat/completions"></option>
-        <option value="http://localhost:11434/v1/chat/completions"></option>
-      </datalist>
+
+      <label class="block">Chave da API (opcional)
+        <input id="mChave" placeholder="vazio = usa a chave global" />
+      </label>
+
+      <div class="row between">
+        <span class="status" id="mBuscaStatus"></span>
+        <div class="row-actions">
+          <a class="ghost small" id="mLinkChave" href="#" target="_blank"
+             rel="noopener" style="display:none">pegar a chave</a>
+          <button class="ghost" id="mBuscar" type="button">🔍 Buscar modelos</button>
+        </div>
+      </div>
+
+      <div class="mlista" id="mLista" style="display:none">
+        <input class="mfiltro" id="mFiltro" placeholder="filtrar (ex: free, coder, 70b)" />
+        <div class="mitens" id="mItens"></div>
+      </div>
+
       <div class="row">
         <label>Nome do modelo
           <input id="mModelo" placeholder="nvidia/nemotron-3.5-lightning:free" />
         </label>
-        <label>Chave (opcional)
-          <input id="mChave" placeholder="vazio = usa a chave global" />
+        <label>Apelido
+          <input id="mApelido" placeholder="Nemotron grátis" />
         </label>
       </div>
+
       <label class="block">Observação
         <input id="mNota" placeholder="bom pra código, porém lento" />
       </label>
+
       <div class="row between">
         <span class="status" id="mStatus"></span>
         <div class="row-actions">

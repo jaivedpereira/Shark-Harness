@@ -252,12 +252,33 @@ class Handler(BaseHTTPRequestHandler):
             "modelos": models.listar(),
             "niveis": [{"nivel": n, **info} for n, info in models.NIVEIS.items()],
             "ativo": atual.get("id") if atual else "",
+            "provedores": providers.listar(),
             "global": {
                 "url": env("LLM_URL", agent.DEFAULT_URL),
                 "modelo": env("LLM_MODEL", agent.DEFAULT_MODEL),
                 "tem_chave": bool(env("LLM_KEY", "")),
             },
         }
+
+    def _modelos_disponiveis(self, body: dict) -> dict:
+        """Pergunta ao provedor quais modelos ele oferece (para escolher da lista real).
+
+        Se o corpo não trouxer chave, usa a global — assim a interface pode pedir a
+        lista de um endpoint já configurado sem pedir a chave de novo.
+        """
+        url = str(body.get("url") or "").strip()
+        chave = str(body.get("chave") or "").strip() or env("LLM_KEY", "")
+
+        # se vier um provedor em vez de uma URL, resolve pela tabela
+        if not url:
+            pid = str(body.get("provider") or "")
+            p = providers.achar(pid)
+            url = (p or {}).get("url") or ""
+
+        r = providers.listar_modelos(url, chave)
+        # dá uma dica de qual provedor é, para a interface mostrar o link da chave
+        r["provider"] = providers.detectar(url)
+        return r
 
     def _acao_modelo(self, body: dict) -> dict:
         """Salvar / remover / escolher / testar um modelo do catálogo."""
@@ -280,6 +301,8 @@ class Handler(BaseHTTPRequestHandler):
                 return {"ok": bool(r.get("ok")), "teste": r,
                         "msg": r.get("veredito") or r.get("erro") or "teste concluído",
                         "lista": self._modelos()}
+            if acao == "disponiveis":
+                return self._modelos_disponiveis(body)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
         return {"ok": False, "erro": f"ação desconhecida: {acao}"}
