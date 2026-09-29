@@ -73,6 +73,92 @@ nh info
 
 ---
 
+## 🔄 Como atualizar
+
+Atualizar é **baixar o código novo e rodar de novo** — sua chave, seu catálogo de modelos
+e suas sessões ficam em `~/.shark-harness/`, **fora** do projeto, então nada disso se perde.
+Plugins que você instalou pelo marketplace também sobrevivem (ficam em
+`~/.shark-harness/plugins/`).
+
+### 🪟 Windows (PowerShell)
+
+Primeiro confirme que o Git está instalado:
+```powershell
+git --version
+```
+Se reclamar que não existe, instale com:
+```powershell
+winget install Git.Git
+```
+(depois **feche e abra o terminal de novo**, para o comando `git` aparecer)
+
+Com o Git OK, entre na pasta e baixe a atualização:
+```powershell
+cd $HOME\Shark-Harness
+```
+```powershell
+git pull
+```
+E rode — o `run_web.bat` cuida do caminho do Python pra você:
+```powershell
+.\run_web.bat
+```
+
+> **Não precisa reinstalar.** O projeto é instalado em modo "editável" (`pip install -e .`),
+> então o que o `git pull` baixou já vale na próxima vez que você roda.
+
+> ⚠️ **Se você baixou o ZIP e não clonou com Git**, o `git pull` vai dizer
+> *"not a git repository"*. Aí tem duas saídas: baixar o ZIP de novo (e reinstalar), ou —
+> melhor — clonar uma vez com Git e nunca mais se preocupar:
+> ```powershell
+> cd $HOME
+> ```
+> ```powershell
+> git clone https://github.com/jaivedpereira/Shark-Harness.git
+> ```
+> ```powershell
+> cd Shark-Harness
+> ```
+> ```powershell
+> .\install.ps1
+> ```
+> (se der erro de política de execução: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)
+
+### 📱 Termux / 🐧 Linux
+
+```bash
+cd ~/Shark-Harness
+```
+```bash
+git pull
+```
+```bash
+./.venv/bin/nh web
+```
+
+### Se o `git pull` reclamar de arquivo modificado
+
+Acontece quando algum arquivo do projeto foi editado à mão. Descarte as mudanças locais
+e baixe de novo:
+```bash
+git checkout .
+```
+```bash
+git pull
+```
+
+### Se a porta estiver ocupada
+
+O harness avisa sozinho e **sobe numa porta livre automaticamente**. Se você quiser aquela
+porta de volta, pare a janela antiga:
+```bash
+pkill -f "Shark-Harness"
+```
+> Aquela janela antiga está rodando o **código de antes** do `git pull` — por isso o certo
+> é parar e subir de novo, não só recarregar a página.
+
+---
+
 ## 🦈 A interface
 
 ```bash

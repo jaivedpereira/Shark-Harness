@@ -198,6 +198,87 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_atualizar(args: argparse.Namespace) -> int:
+    """Baixa a versão nova do projeto pelo git, sem perder config nem plugins.
+
+    Faz `git pull --ff-only` na pasta do próprio projeto. Só atualiza código: a sua
+    chave, o catálogo de modelos e as sessões vivem em ~/.shark-harness/ (fora daqui),
+    e os plugins que você instalou ficam em ~/.shark-harness/plugins/.
+    """
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from .paths import HOME
+
+    raiz = Path(__file__).resolve().parent.parent
+    print(f"🦈 Shark Harness — atualizando {raiz}\n")
+
+    if not shutil.which("git"):
+        print("❌ Git não está instalado. Instale e tente de novo:")
+        print("     Termux/Linux :  pkg install git")
+        print("     Windows      :  winget install Git.Git   (depois reabra o terminal)")
+        return 1
+
+    if not (raiz / ".git").is_dir():
+        print("❌ Essa pasta não foi clonada com git (não tem .git), então não dá para")
+        print("   baixar atualização por aqui. Duas saídas:")
+        print("     • baixar o ZIP novo e reinstalar, ou")
+        print("     • clonar de uma vez e nunca mais se preocupar:")
+        print("         git clone https://github.com/jaivedpereira/Shark-Harness.git")
+        print("         cd Shark-Harness")
+        print("         ./install.sh        (Linux/Termux)   ou   .\\install.ps1  (Windows)")
+        return 1
+
+    # mostra de onde para onde vai
+    def git(*comandos: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *comandos], cwd=raiz, capture_output=True, text=True)
+
+    antes = git("rev-parse", "--short", "HEAD").stdout.strip()
+    ramo = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() or "main"
+
+    sujo = git("status", "--porcelain").stdout.strip()
+    if sujo:
+        print("⚠️  Você tem alterações locais no projeto:")
+        for linha in sujo.splitlines()[:8]:
+            print(f"     {linha}")
+        print("\n   Para descartar e atualizar mesmo assim:")
+        print("     git checkout .")
+        print("     nh atualizar\n")
+        return 1
+
+    print(f"   versão atual: {antes} (ramo {ramo})")
+    print("   baixando…\n")
+    r = git("pull", "--ff-only")
+    saida = (r.stdout + r.stderr).strip()
+    for linha in saida.splitlines()[-14:]:
+        print(f"   {linha}")
+
+    if r.returncode != 0:
+        print("\n❌ O git não conseguiu atualizar. Motivos comuns:")
+        print("     • sem internet no momento")
+        print("     • o histórico local divergiu (git checkout . e tente de novo)")
+        print("     • você mexeu no projeto à mão sem commitar")
+        return 1
+
+    depois = git("rev-parse", "--short", "HEAD").stdout.strip()
+    print()
+    if depois == antes:
+        print("✅ Já estava na versão mais nova — nada para atualizar.")
+    else:
+        print(f"✅ Atualizado: {antes} → {depois}\n")
+        nomes = git("diff", "--stat", antes, depois).stdout.strip()
+        if nomes:
+            print("   o que mudou:")
+            for linha in nomes.splitlines()[-10:]:
+                print(f"     {linha.strip()}")
+
+    print("\n👉 Agora é só rodar de novo:  nh web")
+    print("   (a interface antiga, se estiver aberta, continua com o código VELHO)")
+    print(f"   sua chave e seu catálogo ficam em {HOME} — nada disso se perde")
+    return 0
+
+
 def cmd_modelo(args: argparse.Namespace) -> int:
     """Catálogo de modelos: listar, adicionar, escolher, testar e remover."""
     from . import models
@@ -511,6 +592,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     d2 = sub.add_parser("doctor", help="diagnóstico do ambiente (testa escrita de arquivo de verdade)")
     d2.set_defaults(func=cmd_doctor)
+
+    at = sub.add_parser("atualizar", aliases=["update"],
+                        help="baixa a versão nova pelo git (não perde config, chave nem plugins)")
+    at.set_defaults(func=cmd_atualizar)
 
     # nh modelo — catálogo de modelos (vários endpoints e níveis)
     mo = sub.add_parser("modelo", help="catálogo de modelos: listar, adicionar, escolher, testar")
