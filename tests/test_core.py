@@ -2,8 +2,11 @@
 
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, "/home/azureuser/nano-harness")
+# caminho relativo ao próprio teste — nunca cravar caminho absoluto da máquina
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
 
 from nh.core import load_plugins          # noqa: E402
 from nh.guard import GuardError, check_command  # noqa: E402
@@ -78,7 +81,7 @@ out = reg.dispatch("write_file", {"path": "teste_nh.txt", "conteudo": "linha1\nl
 ok("gravado" in out, "write_file gravou no workspace", out.splitlines()[0])
 out = reg.dispatch("read_file", {"path": "teste_nh.txt"})
 ok("linha1" in out and "linha2" in out, "read_file leu de volta")
-out = reg.dispatch("find_files", {"padrao": "*.py", "path": "/home/azureuser/nano-harness/nh"})
+out = reg.dispatch("find_files", {"padrao": "*.py", "path": str(RAIZ / "nh")})
 ok("guard.py" in out, "find_files achou os módulos")
 out = reg.dispatch("sysinfo_report", {})
 ok("RELATÓRIO" in out and "RAM" in out, "sysinfo_report respondeu")

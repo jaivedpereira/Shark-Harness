@@ -8,14 +8,15 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
-sys.path.insert(0, "/home/azureuser/nano-harness")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nh.core import load_plugins  # noqa: E402
 from nh.agent import run_agent  # noqa: E402
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
-KEY = os.environ.get("NH_LLM_KEY", "")
+KEY = os.environ.get("SHARK_LLM_KEY") or os.environ.get("NH_LLM_KEY") or ""
 CANDIDATOS = [
     "nvidia/nemotron-3.5-lightning:free",
     "dots-studio/dots-3-note-preview:free",
