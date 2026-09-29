@@ -175,6 +175,12 @@
               <option value="danger">danger — pode apagar arquivo</option>
             </select>
           </label>
+          <label>Rodadas por tarefa
+            <input id="cfgRounds" type="number" min="2" max="60" step="1" value="14" />
+            <span class="hint">cada ferramenta que ele usa gasta 1 rodada. A última é
+            sempre reservada para ele escrever a resposta — então nunca termina de mãos vazias.
+            Tarefa de depuração (testar, corrigir, testar) pede 15 a 20.</span>
+          </label>
         </div>
 
         <div class="row between">

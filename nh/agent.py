@@ -5,10 +5,14 @@ apenas Python. Qualquer endpoint OpenAI-compatível serve (DeepSeek, OpenCode/Ze
 Groq, OpenRouter, Ollama local...).
 
 Config por env:
-  NH_LLM_URL    default https://opencode.ai/zen/v1/chat/completions
-  NH_LLM_KEY    token (se o endpoint exigir)
-  NH_LLM_MODEL  default deepseek-v4-flash-free
-  NH_MAX_RISK   risco máximo exposto ao modelo: safe|write|exec|danger (default exec)
+  SHARK_LLM_URL     endpoint OpenAI-compatível (default: OpenRouter)
+  SHARK_LLM_KEY     token do provedor (sem ele o chat não responde)
+  SHARK_LLM_MODEL   modelo (default: nvidia/nemotron-3.5-lightning:free)
+  SHARK_MAX_RISK    risco máximo exposto ao modelo: safe|write|exec|danger (default exec)
+  SHARK_MAX_ROUNDS  rodadas do loop de ferramentas (default 14)
+
+O prefixo legado `NH_` continua aceito em todas elas. Também vale o que estiver em
+`~/.shark-harness/config.json` (a aba Configurações da interface escreve lá).
 """
 
 from __future__ import annotations
@@ -28,15 +32,30 @@ DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning:free"
 
 # Alguns provedores ficam atrás de Cloudflare e recusam o UA padrão do urllib
 # ("Python-urllib/3.11") com `error code: 1010`. Um UA comum resolve.
-USER_AGENT = "nano-harness/0.1 (+https://github.com)"
+USER_AGENT = "shark-harness/0.1 (+https://github.com/jaivedpereira/Shark-Harness)"
 
-SYSTEM = """Você é o nano-harness: um agente que executa tarefas reais no dispositivo do usuário.
+# Rounds padrão. Cada chamada de ferramenta gasta uma rodada — 8 era apertado demais
+# para tarefa de depuração (escrever script -> rodar -> corrigir -> rodar) e o agente
+# terminava com "limite atingido" em vez de entregar algo. Ver SHARK_MAX_ROUNDS.
+MAX_ROUNDS_PADRAO = 14
 
-Regras:
+SYSTEM = """Você é o Shark Harness: um agente que executa tarefas reais no dispositivo do usuário.
+
+Como trabalhar:
 - Use as ferramentas em vez de adivinhar. Nunca invente saída de comando.
-- Antes de tarefa pesada, cheque o estado com sysinfo_report.
-- Prefira passos pequenos e verifique o resultado de cada um.
-- Quando terminar, responda em português, curto e direto, dizendo o que fez e o resultado real.
+- ANTES de escrever código do zero, veja se o sistema já tem ferramenta pronta:
+  use `which` (ex.: which pdfimages; which ffmpeg; which convert) e prefira a que existe.
+  Escrever um extrator de PDF na mão é o caminho mais longo e o que mais falha —
+  `pdfimages` resolve em um comando.
+- Se a tarefa tem muitos passos pequenos, escreva UM script que faz tudo de uma vez
+  e rode ele: isso gasta 1 rodada em vez de 10.
+- Você tem um número LIMITADO de rodadas (cada chamada de ferramenta gasta uma).
+  Se o pedido é grande, resolva a parte principal primeiro.
+- Se estiver perto do limite, ENTREGUE o que já conseguiu e diga o que ficou pendente.
+  Nunca termine de mãos vazias.
+- Se um comando falhar, tente UMA alternativa óbvia; se falhar de novo, explique e pare
+  em vez de insistir na mesma abordagem.
+- Quando terminar, responda em português, curto e direto: o que fez e o resultado real.
 - Se uma ferramenta for bloqueada pela guarda, explique e proponha alternativa segura.
 - Você tem permissão para criar, ler e modificar arquivos do usuário e rodar comandos
   não destrutivos. Não tente contornar a guarda de segurança.
@@ -71,7 +90,7 @@ def run_agent(
     model: str = "",
     url: str = "",
     api_key: str = "",
-    max_rounds: int = 8,
+    max_rounds: int = 0,
     max_risk: str = "",
     verbose: bool = True,
     history: list | None = None,
@@ -92,6 +111,13 @@ def run_agent(
     api_key = api_key or env("LLM_KEY")
     max_risk = max_risk or env("MAX_RISK", "exec")
 
+    if not max_rounds:
+        try:
+            max_rounds = int(env("MAX_ROUNDS", str(MAX_ROUNDS_PADRAO)) or MAX_ROUNDS_PADRAO)
+        except ValueError:
+            max_rounds = MAX_ROUNDS_PADRAO
+    max_rounds = max(2, min(int(max_rounds), 60))
+
     tools = [t.as_openai() for t in reg.subset(max_risk=max_risk)]
     messages: list = history if history is not None else [{"role": "system", "content": SYSTEM}]
     messages.append({"role": "user", "content": user_text})
@@ -108,10 +134,26 @@ def run_agent(
                 pass
 
     show(f"🤖 modelo: {model} · {len(tools)} ferramentas expostas (risco ≤ {max_risk})")
-    step("info", model, f"{len(tools)} ferramentas (risco ≤ {max_risk})")
+    step("info", model, f"{len(tools)} ferramentas (risco ≤ {max_risk}) · até {max_rounds} rodadas")
 
     for rodada in range(1, max_rounds + 1):
+        ultima = rodada >= max_rounds
+
+        # perto do fim, avisa o modelo para começar a fechar
+        if max_rounds - rodada == 2:
+            messages.append({"role": "system", "content":
+                             "Restam poucas rodadas. Comece a concluir: se não der para terminar "
+                             "tudo, entregue o que já tem e diga o que ficou pendente."})
+
         payload = {"model": model, "messages": messages, "tools": tools, "tool_choice": "auto"}
+        if ultima:
+            # A ÚLTIMA rodada não oferece ferramentas: obriga o modelo a ESCREVER a
+            # resposta com o que já conseguiu, em vez de terminar no erro de limite.
+            messages.append({"role": "system", "content":
+                             "Última rodada: não há mais chamadas de ferramenta. Responda agora, "
+                             "em português, com o resultado que você já obteve e o que ficou pendente."})
+            payload["tools"] = []
+            payload["tool_choice"] = "none"
         try:
             resp = _post(url, payload, api_key)
         except urllib.error.HTTPError as exc:
@@ -121,7 +163,7 @@ def run_agent(
                 dica = ("\n💡 1010 = Cloudflare bloqueou a requisição (UA/IP). "
                         "Tente rodar de outra rede ou de um endpoint local (Ollama).")
             elif exc.code in (401, 403):
-                dica = "\n💡 confira NH_LLM_KEY (e se o modelo existe nesse provedor)."
+                dica = "\n💡 confira a chave em Configurações (ou SHARK_LLM_KEY) e se o modelo existe nesse provedor."
             msg = f"ERRO HTTP {exc.code} no LLM: {body}{dica}"
             step("erro", "llm", msg)
             return msg
@@ -142,6 +184,13 @@ def run_agent(
             show("✅ pronto")
             step("resposta", "", text)
             return text
+
+        if ultima:
+            # não devia acontecer (mandamos tools=[]), mas nunca ficamos em silêncio
+            texto = ("⚠️ Usei todas as rodadas sem fechar a resposta. "
+                     "Me peça para continuar de onde parou.")
+            step("erro", "loop", texto)
+            return texto
 
         messages.append(msg)  # ecoa a decisão do modelo (inclui os tool_calls)
         for call in calls:
@@ -164,7 +213,10 @@ def run_agent(
                 "content": str(result),
             })
 
-    limite = "⚠️ limite de rodadas atingido sem resposta final — veja os passos acima."
+    # rede de segurança: com a última rodada reservada para a resposta isto não
+    # deveria ser alcançado, mas se for, o usuário recebe um convite a continuar
+    limite = ("⚠️ Parei no limite de rodadas antes de fechar. "
+              "Peça para continuar de onde parou e eu sigo.")
     step("erro", "loop", limite)
     return limite
 

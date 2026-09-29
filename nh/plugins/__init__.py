@@ -1,4 +1,4 @@
-"""Plugins do nano-harness.
+"""Plugins do Shark Harness.
 
 Cada módulo aqui expõe uma função `register(reg)` e registra suas ferramentas.
 Para criar um plugin novo: crie `meu_plugin.py` neste diretório com

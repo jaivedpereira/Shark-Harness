@@ -1,4 +1,4 @@
-"""Agendador do nano-harness — cron próprio, sem depender de crontab do sistema.
+"""Agendador do Shark Harness — cron próprio, sem depender de crontab do sistema.
 
 Por que não usar `crontab`? Porque no Termux ele não existe de verdade e no
 Windows também não. Um agendador embutido funciona igual nas três plataformas e
@@ -256,7 +256,7 @@ def due_jobs(now: datetime, jobs: list[Job] | None = None) -> list[Job]:
 def daemon(reg, interval: int = 20, quiet: bool = False) -> None:
     """Loop do agendador. Roda até receber Ctrl+C."""
     log = (lambda *a: None) if quiet else print
-    log(f"⏰ nano-harness scheduler ativo (tick {interval}s) — {len(load_jobs())} job(s) registrados")
+    log(f"⏰ Shark Harness scheduler ativo (tick {interval}s) — {len(load_jobs())} job(s) registrados")
     while True:
         try:
             now = datetime.now()

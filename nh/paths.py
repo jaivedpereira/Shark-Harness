@@ -117,6 +117,7 @@ _CONFIG_KEYS = {
     "LLM_KEY": "llm_key",
     "LLM_MODEL": "llm_model",
     "MAX_RISK": "max_risk",
+    "MAX_ROUNDS": "max_rounds",
     "PROVIDER": "provider",
 }
 

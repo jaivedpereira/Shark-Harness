@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from ..core import Registry
-from ..paths import has_cmd, platform_name
+from ..paths import WORKSPACE, has_cmd, platform_name
 
 
 def _human(n: float) -> str:
@@ -108,11 +108,9 @@ def sysinfo_report() -> str:
     except Exception:
         pass
 
-    try:
-        ws = Path.home() / "nh-workspace"
-        lines.append(f"workspace  : {ws}")
-    except Exception:
-        pass
+    # usa o WORKSPACE de verdade (antes tinha "nh-workspace" na mão, da marca antiga,
+    # e Path.home() — que no Termux pode cair em `/`)
+    lines.append(f"workspace  : {WORKSPACE}")
 
     return "\n".join(lines)
 
@@ -123,7 +121,7 @@ def disk_usage(caminho: str = "") -> str:
     Args:
         caminho: pasta a medir; vazio = home do usuário.
     """
-    target = Path(caminho).expanduser() if caminho else Path.home()
+    target = Path(caminho).expanduser() if caminho else WORKSPACE.parent
     if not target.exists():
         return f"❌ não existe: {target}"
     try:

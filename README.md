@@ -226,6 +226,17 @@ SHARK_MAX_RISK=exec   nh serve   # default: escreve e executa, mas NÃO apaga
 SHARK_MAX_RISK=danger nh serve   # libera delete_path (só se você confiar)
 ```
 
+**Rodadas do agente** — cada ferramenta que ele usa gasta uma rodada. A última é
+sempre reservada para ele **escrever a resposta**, então nunca termina de mãos vazias:
+```bash
+SHARK_MAX_ROUNDS=14  nh run "..."   # default
+SHARK_MAX_ROUNDS=25  nh run "..."   # tarefa longa de depuração (testar/corrigir/testar)
+```
+Também dá para ajustar na interface, em **Configurações → Rodadas por tarefa**.
+
+Se um pedido for grande demais, ele resolve a parte principal, entrega o que
+conseguiu e diz o que ficou pendente — aí você pede para continuar de onde parou.
+
 ---
 
 ## 🛡️ Segurança (leia)

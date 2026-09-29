@@ -1,4 +1,4 @@
-"""Teste rápido e real do núcleo do nano-harness (sem LLM, sem MCP)."""
+"""Teste rápido e real do núcleo do Shark Harness (sem LLM, sem MCP)."""
 
 import sys
 import time

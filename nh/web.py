@@ -160,6 +160,7 @@ class Handler(BaseHTTPRequestHandler):
                 "url": url,
                 "model": modelo,
                 "max_risk": env("MAX_RISK", self.max_risk),
+                "max_rounds": int(env("MAX_ROUNDS", str(agent.MAX_ROUNDS_PADRAO)) or agent.MAX_ROUNDS_PADRAO),
                 "tem_chave": bool(chave),
                 # vislumbre: primeiros 6 e últimos 4 caracteres
                 "chave_dica": (chave[:6] + "…" + chave[-4:]) if len(chave) > 12 else ("definida" if chave else ""),
@@ -175,6 +176,7 @@ class Handler(BaseHTTPRequestHandler):
         modelo = str(body.get("model") or "").strip()
         chave = body.get("api_key")
         risco = str(body.get("max_risk") or "").strip()
+        rodadas = body.get("max_rounds")
 
         info = providers.achar(provider)
         if info and not url:
@@ -196,6 +198,15 @@ class Handler(BaseHTTPRequestHandler):
         }
         if risco:
             campos["max_risk"] = risco
+        # quantas rodadas o agente pode gastar antes de ter que responder
+        if rodadas not in (None, ""):
+            try:
+                n = int(rodadas)
+            except (TypeError, ValueError):
+                return {"ok": False, "erro": "rodadas precisa ser um número."}
+            if not 2 <= n <= 60:
+                return {"ok": False, "erro": "rodadas deve ficar entre 2 e 60."}
+            campos["max_rounds"] = n
         # chave vazia = "não mexi na chave"; "remover" limpa; string nova grava
         if isinstance(chave, str) and chave.strip() and chave.strip() != "••••":
             campos["llm_key"] = chave.strip()

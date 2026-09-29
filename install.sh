@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Instala o nano-harness e (opcionalmente) o SDK do MCP.
+# Instala o Shark Harness e (opcionalmente) o SDK do MCP.
 #   ./install.sh          → núcleo + CLI (funciona no Termux)
 #   ./install.sh --with-mcp → adiciona o servidor MCP (NÃO no Termux)
 set -euo pipefail
 
 cd "$(dirname "$0")"
-echo "🧰 instalando nano-harness em $(pwd)"
+echo "🧰 instalando Shark Harness em $(pwd)"
 
 PY="${PYTHON:-python3}"
 command -v "$PY" >/dev/null || { echo "❌ python3 não encontrado"; exit 1; }

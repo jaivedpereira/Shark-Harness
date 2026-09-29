@@ -3,8 +3,8 @@
 O mesmo registry usado pela CLI e pelo agente vira um servidor MCP, então
 Claude Code / Cursor / OpenCode enxergam as ferramentas e podem chamá-las.
 
-Gate de risco: só entram ferramentas até `NH_MAX_RISK` (default 'exec').
-Coloque NH_MAX_RISK=danger se quiser que a IA também possa apagar coisas.
+Gate de risco: só entram ferramentas até `SHARK_MAX_RISK` (default 'exec').
+Coloque SHARK_MAX_RISK=danger se quiser que a IA também possa apagar coisas.
 
 O SDK do MCP é OPCIONAL: no Termux ele não instala (rpds-py precisa de Rust),
 e nesse caso a CLI e o agente continuam funcionando normalmente.

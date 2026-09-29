@@ -356,6 +356,7 @@ async function carregarConfig() {
   $("#cfgUrl").value = a.url || "";
   $("#cfgModel").value = a.model || "";
   $("#cfgRisk").value = a.max_risk || "exec";
+  $("#cfgRounds").value = a.max_rounds || 14;
   $("#cfgWhere").textContent = CONFIG.arquivo || "—";
   atualizarDatalist(a.provider);
 
@@ -402,6 +403,7 @@ $("#cfgSave").addEventListener("click", async () => {
       model: $("#cfgModel").value.trim(),
       api_key: $("#cfgKey").value.trim(),
       max_risk: $("#cfgRisk").value,
+      max_rounds: $("#cfgRounds").value,
     },
   });
   if (!r.ok) {

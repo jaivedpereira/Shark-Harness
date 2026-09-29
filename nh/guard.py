@@ -1,4 +1,4 @@
-"""Guardas de segurança do nano-harness.
+"""Guardas de segurança do Shark Harness.
 
 Um agente que roda comandos pode destruir a máquina. Estas guardas existem para
 tornar o dano acidental (ou um modelo alucinando) muito menos provável:

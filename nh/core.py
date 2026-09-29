@@ -1,4 +1,4 @@
-"""Núcleo do nano-harness — registro de ferramentas e carregamento de plugins.
+"""Núcleo do Shark Harness — registro de ferramentas e carregamento de plugins.
 
 O núcleo não sabe fazer nada sozinho. Ele só:
   1. descobre plugins em `nh/plugins/*.py`

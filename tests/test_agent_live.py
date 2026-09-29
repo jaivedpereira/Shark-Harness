@@ -1,4 +1,4 @@
-"""Escolhe um modelo grátis que responda e roda o agente real do nano-harness.
+"""Escolhe um modelo grátis que responda e roda o agente real do Shark Harness.
 
 Uso: NH_LLM_KEY=... python3 tests/test_agent_live.py
 """
@@ -41,7 +41,7 @@ def ping(model: str) -> tuple[bool, str]:
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {KEY}",
-            "User-Agent": "nano-harness/0.1",
+            "User-Agent": "Shark Harness/0.1",
         },
         method="POST",
     )
