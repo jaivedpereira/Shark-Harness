@@ -67,6 +67,7 @@ function irPara(view) {
 
   if (view === "config") carregarConfig();
   else if (view === "tools") carregarLoja();
+  else if (view === "sessoes") carregarSessoes();
   else if (view === "sys") carregarUso();
   else if (view === "audit" || view === "cron") loadState();
 }
@@ -190,9 +191,99 @@ function fmtNum(n) {
   return n >= 1000 ? (n / 1000).toFixed(1).replace(".", ",") + "k" : String(n);
 }
 
-function addMsg(quem, texto) {
+/* ───────────────── markdown mínimo (sem dependência) ─────────────────
+   As respostas do modelo vêm em markdown; antes eram mostradas cruas.
+   Cobre: ```blocos```, `inline`, **negrito**, *itálico*, títulos, listas e links. */
+function md(texto) {
+  const blocos = [];
+  // 1) guarda os blocos de código antes de escapar (senão o escape estraga o código)
+  let s = String(texto ?? "").replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, codigo) => {
+    blocos.push({ lang: lang || "", codigo });
+    return `\u0000BLOCO${blocos.length - 1}\u0000`;
+  });
+
+  s = esc(s);
+
+  // 2) títulos
+  s = s.replace(/^#{4,6}\s+(.+)$/gm, '<h6>$1</h6>')
+       .replace(/^###\s+(.+)$/gm, "<h5>$1</h5>")
+       .replace(/^##\s+(.+)$/gm, "<h4>$1</h4>")
+       .replace(/^#\s+(.+)$/gm, "<h3>$1</h3>");
+
+  // 3) listas
+  s = s.replace(/^\s*[-*+]\s+(.+)$/gm, "<li>$1</li>")
+       .replace(/^\s*\d+[.)]\s+(.+)$/gm, "<li>$1</li>")
+       .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>");
+
+  // 4) tabelas simples (| a | b |) — só as linhas de dados viram texto alinhado
+  s = s.replace(/^\|(.+)\|$/gm, (linha) => {
+    if (/^\|[\s:|-]+\|$/.test(linha)) return "";
+    const cels = linha.slice(1, -1).split("|").map((c) => c.trim());
+    return "— " + cels.join(" · ");
+  });
+
+  // 5) inline
+  s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>")
+       .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+       .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>")
+       .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+                '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // 6) parágrafos por linha dupla — blocos de código e listas ficam fora
+  s = s.split(/\n{2,}/).map((p) => {
+    const t = p.trim();
+    if (!t) return "";
+    // já é um bloco pronto: não embrulha em <p> nem transforma as quebras em <br/>
+    if (/^<(h3|h4|h5|h6|ul|ol)/.test(t)) return t.replace(/\n/g, "");
+    if (/^\u0000BLOCO\d+\u0000$/.test(t)) return t;
+    return `<p>${t.replace(/\n/g, "<br/>")}</p>`;
+  }).join("");
+
+  // 7) devolve os blocos de código, com botão de copiar
+  s = s.replace(/\u0000BLOCO(\d+)\u0000/g, (_, i) => {
+    const b = blocos[Number(i)];
+    return `<div class="codeblk"><div class="codehd"><span>${esc(b.lang || "código")}</span>` +
+           `<button class="copy" type="button">copiar</button></div>` +
+           `<pre>${esc(b.codigo.replace(/\n$/, ""))}</pre></div>`;
+  });
+
+  // 8) limpeza: <br/> sobrando colado em bloco
+  s = s.replace(/<\/li><br\/><li>/g, "</li><li>")
+       .replace(/<br\/><(ul|div|h3|h4|h5|h6)/g, "<$1")
+       .replace(/<\/(ul|div)><br\/>/g, "</$1>")
+       .replace(/<br\/><\/p>/g, "</p>")
+       .replace(/<p><\/p>/g, "");
+  return s;
+}
+
+/* copiar (delegação: vale para código e para a resposta inteira) */
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest(".copy");
+  if (!b) return;
+  const bloco = b.closest(".codeblk");
+  const alvo = b.dataset.alvo ? document.querySelector(b.dataset.alvo) : null;
+  const texto = bloco ? bloco.querySelector("pre").textContent
+                      : alvo ? alvo.innerText
+                      : "";
+  try {
+    await navigator.clipboard.writeText(texto);
+    const antes = b.textContent;
+    b.textContent = "copiado!";
+    setTimeout(() => { b.textContent = antes; }, 1400);
+  } catch (_) {
+    b.textContent = "não deu";
+  }
+});
+
+function addMsg(quem, texto, opts) {
   const m = el("div", "msg " + (quem === "user" ? "user" : "bot"));
-  m.append(el("div", "bubble", `<strong>${quem === "user" ? "você" : "shark"}</strong><p>${esc(texto)}</p>`));
+  const corpo = quem === "user" ? `<p>${esc(texto)}</p>` : md(texto);
+  m.append(el("div", "bubble", `<strong>${quem === "user" ? "você" : "shark"}</strong>${corpo}`));
+  if (opts && opts.copiar) {
+    const b = el("button", "copy mini", "copiar");
+    b.dataset.alvo = opts.alvo;
+    m.querySelector(".bubble").append(b);
+  }
   chat.append(m);
   chat.scrollTop = chat.scrollHeight;
   return m;
@@ -261,47 +352,93 @@ function addStep(box, tipo, nome, detalhe) {
   chat.scrollTop = chat.scrollHeight;
 }
 
-$("#formAgent").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const ta = $("#prompt");
-  const texto = ta.value.trim();
-  if (!texto) return;
-  ta.value = "";
-  ta.style.height = "auto";
-  addMsg("user", texto);
+/* ───────────────── envio: sessão, parar e repetir ───────────────── */
+let ENVIANDO = null; // AbortController da requisição em andamento
 
+function bolhaResposta(turno, texto) {
+  const id = "r" + Math.random().toString(36).slice(2, 9);
+  const div = el("div", "bubble");
+  div.id = id;
+  div.innerHTML = `<strong>shark</strong>${md(texto)}`;
+  const b = el("button", "copy mini", "copiar");
+  b.dataset.alvo = "#" + id;
+  div.append(b);
+  turno.body.append(div);
+  return div;
+}
+
+async function enviar(texto, repetir) {
+  const limpo = String(texto || "").trim();
+  if (!limpo || ENVIANDO) return;
+
+  if (!repetir) addMsg("user", limpo);
   const turno = addTurn();
   const sp = el("div", "spinner", "<i></i><i></i><i></i>");
   turno.steps.append(sp);
   chat.scrollTop = chat.scrollHeight;
-  const btn = $("#formAgent").querySelector(".primary");
-  btn.disabled = true;
+
+  ENVIANDO = new AbortController();
+  const btnEnviar = $("#btnEnviar");
+  const btnParar = $("#btnParar");
+  btnEnviar.disabled = true;
+  btnParar.style.display = "";
 
   try {
-    const r = await api("/api/agent", { method: "POST", body: { prompt: texto } });
+    const r = await api("/api/agent", {
+      method: "POST",
+      body: { prompt: limpo, sessao: SESSAO_ATUAL ? SESSAO_ATUAL.id : "" },
+      signal: ENVIANDO.signal,
+    });
     sp.remove();
     let tokens = null;
     (r.steps || []).forEach((s) => {
       if (s.tipo === "resposta") return;
       if (s.tipo === "tokens") {
-        try {
-          tokens = JSON.parse(s.detalhe);
-        } catch (_) {
-          tokens = null;
-        }
+        try { tokens = JSON.parse(s.detalhe); } catch (_) { tokens = null; }
         return;
       }
       addStep(turno.steps, s.tipo, s.nome, s.detalhe);
     });
-    turno.body.append(el("div", "bubble", `<strong>shark</strong><p>${esc(r.answer || "(sem resposta)")}</p>`));
+    bolhaResposta(turno, r.answer || "(sem resposta)");
     resumirTurno(turno, tokens);
+    if (SESSAO_ATUAL) carregarSessoes(); // atualiza a contagem de mensagens
   } catch (err) {
     sp.remove();
-    addStep(turno.steps, "erro", "rede", String(err));
+    const parou = err && err.name === "AbortError";
+    addStep(turno.steps, "erro", parou ? "cancelado" : "rede",
+            parou ? "você parou a execução." : String(err));
+    const t = el("button", "ghost small", "tentar de novo");
+    t.addEventListener("click", () => enviar(limpo, true));
+    turno.body.append(t);
     resumirTurno(turno, null);
   }
-  btn.disabled = false;
+
+  ENVIANDO = null;
+  btnEnviar.disabled = false;
+  btnParar.style.display = "none";
   loadState();
+}
+
+$("#formAgent").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const ta = $("#prompt");
+  const texto = ta.value;
+  if (!texto.trim()) return;
+  ta.value = "";
+  ta.style.height = "auto";
+  enviar(texto);
+});
+
+$("#btnParar").addEventListener("click", () => {
+  if (ENVIANDO) ENVIANDO.abort();
+});
+
+/* Enter envia; Shift+Enter quebra linha */
+$("#prompt").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    $("#formAgent").dispatchEvent(new Event("submit"));
+  }
 });
 
 $("#suggest").addEventListener("click", (e) => {
@@ -853,7 +990,275 @@ $("#cfgBarra").addEventListener("change", (e) => {
 });
 aplicarBarra();
 
+/* ═══════════════════════ sessões (pasta de projeto) ═══════════════════════ */
+let SESSAO_ATUAL = null;   // {id, nome, pasta}
+let SES_LISTA = [];
+let FS_ATUAL = "";
+let FS_INICIO = "";
+
+async function carregarSessoes() {
+  try {
+    const d = await api("/api/sessoes");
+    SES_LISTA = d.sessoes || [];
+    FS_INICIO = d.inicio || "";
+    renderSessoes();
+    renderSessaoPick();
+  } catch (e) {
+    $("#sesLista").innerHTML = `<p class="hint">não consegui falar com o servidor: ${esc(String(e))}</p>`;
+  }
+}
+
+function renderSessoes() {
+  const box = $("#sesLista");
+  box.innerHTML = "";
+  if (!SES_LISTA.length) {
+    box.append(el("p", "hint",
+      "Nenhuma sessão ainda. Crie uma acima apontando para a pasta de um projeto — " +
+      "por exemplo o repositório que você clonou no celular."));
+    return;
+  }
+  SES_LISTA.forEach((s) => {
+    const c = el("div", "sescard" + (SESSAO_ATUAL && SESSAO_ATUAL.id === s.id ? " on" : ""));
+    c.innerHTML =
+      `<div class="sescard-top"><span class="sescard-ico">📂</span>` +
+      `<div class="sescard-nome"><strong>${esc(s.nome)}</strong>` +
+      `<code>${esc(s.pasta)}</code></div>` +
+      (s.existe ? "" : `<span class="rtag r-danger">pasta sumiu</span>`) + `</div>` +
+      `<div class="sescard-meta">${plural(s.mensagens || 0, "mensagem", "mensagens")}` +
+      (s.ultima ? ` · última: ${esc(String(s.ultima).slice(0, 70))}` : " · conversa nova") + `</div>`;
+    const acoes = el("div", "sescard-acoes");
+    const abrir = el("button", "primary small", SESSAO_ATUAL && SESSAO_ATUAL.id === s.id ? "aberta" : "abrir");
+    abrir.disabled = !s.existe;
+    abrir.addEventListener("click", () => abrirSessao(s.id));
+    const ren = el("button", "ghost small", "renomear");
+    ren.addEventListener("click", async () => {
+      const nome = prompt("Novo nome da sessão:", s.nome);
+      if (!nome) return;
+      const r = await api("/api/sessoes", { method: "POST", body: { acao: "renomear", id: s.id, nome } });
+      toast(r.msg || r.erro || "pronto");
+      carregarSessoes();
+    });
+    const limp = el("button", "ghost small", "limpar conversa");
+    limp.addEventListener("click", async () => {
+      if (!confirm(`Zerar a conversa da sessão "${s.nome}"? A pasta não é tocada.`)) return;
+      const r = await api("/api/sessoes", { method: "POST", body: { acao: "limpar", id: s.id } });
+      toast(r.msg || r.erro || "pronto");
+      if (SESSAO_ATUAL && SESSAO_ATUAL.id === s.id) abrirSessao(s.id);
+    });
+    const del = el("button", "ghost small", "apagar");
+    del.addEventListener("click", async () => {
+      if (!confirm(`Apagar a sessão "${s.nome}"? A pasta do projeto NÃO é tocada.`)) return;
+      const r = await api("/api/sessoes", { method: "POST", body: { acao: "apagar", id: s.id } });
+      toast(r.msg || r.erro || "pronto");
+      if (SESSAO_ATUAL && SESSAO_ATUAL.id === s.id) sairSessao();
+      carregarSessoes();
+    });
+    acoes.append(abrir, ren, limp, del);
+    c.append(acoes);
+    box.append(c);
+  });
+}
+
+function renderSessaoBar() {
+  const txt = $("#sbarTxt");
+  const fechar = $("#sbarClose");
+  const arv = $("#sbarArvore");
+  if (SESSAO_ATUAL) {
+    txt.textContent = `${SESSAO_ATUAL.nome} — ${SESSAO_ATUAL.pasta}`;
+    txt.title = SESSAO_ATUAL.pasta;
+    $("#sbar").classList.add("on");
+    fechar.style.display = "";
+    arv.style.display = "";
+    $("#mDot").title = "sessão: " + SESSAO_ATUAL.nome;
+  } else {
+    txt.textContent = "Chat livre — sem pasta de projeto";
+    txt.title = "as ferramentas usam o workspace padrão do harness";
+    $("#sbar").classList.remove("on");
+    fechar.style.display = "none";
+    arv.style.display = "none";
+    $("#arvoreBox").style.display = "none";
+  }
+}
+
+async function abrirSessao(id) {
+  const r = await api("/api/sessoes", { method: "POST", body: { acao: "abrir", id } });
+  if (!r.ok) {
+    toast(r.erro || "não consegui abrir a sessão");
+    return;
+  }
+  SESSAO_ATUAL = { id: r.sessao.id, nome: r.sessao.nome, pasta: r.sessao.pasta };
+  $("#arvoreBox").textContent = r.arvore || "";
+  renderSessaoBar();
+  // remonta a conversa da sessão
+  chat.innerHTML = "";
+  const hist = r.historico || [];
+  if (!hist.length) {
+    const m = el("div", "msg bot");
+    m.append(el("div", "bubble",
+      `<strong>shark</strong><p>Sessão <strong>${esc(SESSAO_ATUAL.nome)}</strong> aberta em ` +
+      `<code>${esc(SESSAO_ATUAL.pasta)}</code>.<br/>Eu já li a pasta — peça algo como ` +
+      `"o que esse projeto faz?", "roda os testes" ou "adiciona um arquivo X".</p>`));
+    chat.append(m);
+  } else {
+    hist.forEach((h) => addMsg(h.role === "user" ? "user" : "bot", h.content));
+  }
+  irPara("chat");
+  fecharSesModal();
+  toast(`sessão "${SESSAO_ATUAL.nome}" aberta — trabalhando em ${SESSAO_ATUAL.pasta}`);
+  carregarSessoes();
+}
+
+function sairSessao() {
+  SESSAO_ATUAL = null;
+  renderSessaoBar();
+  chat.innerHTML = "";
+  const m = el("div", "msg bot");
+  m.append(el("div", "bubble",
+    `<strong>Pronto.</strong><p>Você saiu da sessão — agora as ferramentas usam o workspace padrão. ` +
+    `Para voltar a trabalhar num projeto, toque em <strong>📂</strong> acima ou abra a aba Sessões.</p>`));
+  chat.append(m);
+}
+
+function renderSessaoPick() {
+  const box = $("#sesPickLista");
+  box.innerHTML = "";
+  const livre = el("button", "sespick-item" + (SESSAO_ATUAL ? "" : " on"));
+  livre.innerHTML = `<span>💬</span><div><strong>Chat livre</strong>` +
+                    `<em>sem pasta de projeto — workspace padrão do harness</em></div>`;
+  livre.addEventListener("click", () => { sairSessao(); fecharSesModal(); });
+  box.append(livre);
+  SES_LISTA.forEach((s) => {
+    const b = el("button", "sespick-item" + (SESSAO_ATUAL && SESSAO_ATUAL.id === s.id ? " on" : ""));
+    b.innerHTML = `<span>📂</span><div><strong>${esc(s.nome)}</strong>` +
+                  `<em>${esc(s.pasta)} · ${plural(s.mensagens || 0, "mensagem", "mensagens")}</em></div>`;
+    b.addEventListener("click", () => abrirSessao(s.id));
+    box.append(b);
+  });
+}
+
+function abrirSesModal() { $("#sesModal").classList.add("show"); renderSessaoPick(); }
+function fecharSesModal() { $("#sesModal").classList.remove("show"); }
+
+$("#sbarPick").addEventListener("click", abrirSesModal);
+$("#sesModalClose").addEventListener("click", fecharSesModal);
+$("#sesPickNova").addEventListener("click", () => { fecharSesModal(); irPara("sessoes"); });
+$("#sbarClose").addEventListener("click", sairSessao);
+$("#sbarArvore").addEventListener("click", () => {
+  const a = $("#arvoreBox");
+  a.style.display = a.style.display === "none" ? "" : "none";
+});
+
+$("#sesCriar").addEventListener("click", async () => {
+  const st = $("#sesStatus");
+  st.className = "status";
+  st.textContent = "criando…";
+  const r = await api("/api/sessoes", {
+    method: "POST",
+    body: { acao: "criar", nome: $("#sesNome").value.trim(), pasta: $("#sesPasta").value.trim() },
+  });
+  if (!r.ok) {
+    st.className = "status err";
+    st.textContent = r.erro || "não deu para criar";
+    return;
+  }
+  st.className = "status ok";
+  st.textContent = r.msg;
+  $("#sesNome").value = "";
+  $("#sesPasta").value = "";
+  await carregarSessoes();
+  if (r.sessao) await abrirSessao(r.sessao.id);
+});
+
+$("#sesNavegar").addEventListener("click", () => abrirFS($("#sesPasta").value.trim() || FS_INICIO));
+
+/* navegador de pastas */
+async function abrirFS(pasta) {
+  const d = await api("/api/fs?pasta=" + encodeURIComponent(pasta || ""));
+  if (d.erro) {
+    $("#fsStatus").className = "status err";
+    $("#fsStatus").textContent = d.erro;
+    return;
+  }
+  FS_ATUAL = d.pasta;
+  $("#fsAtual").textContent = d.pasta;
+  $("#fsAcima").disabled = !d.acima;
+  $("#fsAcima").dataset.alvo = d.acima || "";
+  $("#fsStatus").textContent = d.tem_git ? "tem repositório git aqui" : "";
+  $("#fsStatus").className = "status";
+  const lista = $("#fsLista");
+  lista.innerHTML = "";
+  if (!d.pastas.length) {
+    lista.append(el("p", "hint", "nenhuma subpasta aqui — pode usar esta pasta mesmo."));
+  }
+  d.pastas.forEach((p) => {
+    const b = el("button", "fs-item", `<span>📁</span>${esc(p.nome)}`);
+    b.addEventListener("click", () => abrirFS(p.caminho));
+    lista.append(b);
+  });
+  $("#fsModal").classList.add("show");
+}
+$("#fsClose").addEventListener("click", () => $("#fsModal").classList.remove("show"));
+$("#fsAcima").addEventListener("click", (e) => { if (e.target.dataset.alvo) abrirFS(e.target.dataset.alvo); });
+$("#fsUsar").addEventListener("click", () => {
+  $("#sesPasta").value = FS_ATUAL;
+  $("#fsModal").classList.remove("show");
+  if (!$("#sesNome").value.trim()) {
+    $("#sesNome").value = FS_ATUAL.split("/").filter(Boolean).pop() || "projeto";
+  }
+});
+
+/* troca rápida de modelo */
+$("#btnModelo").addEventListener("click", () => {
+  $("#modelQuick").value = (CONFIG && CONFIG.atual && CONFIG.atual.model) || "";
+  $("#modelStatus").textContent = "";
+  const dl = $("#modelLista");
+  dl.innerHTML = "";
+  const provs = (CONFIG && CONFIG.providers) || [];
+  const atual = (CONFIG && CONFIG.atual && CONFIG.atual.provider) || "";
+  const p = provs.find((x) => x.id === atual) || provs[0];
+  ((p && p.models) || []).forEach((m) => {
+    const o = document.createElement("option");
+    o.value = m;
+    dl.append(o);
+  });
+  $("#modelModal").classList.add("show");
+});
+$("#modelModalClose").addEventListener("click", () => $("#modelModal").classList.remove("show"));
+$("#modelSalvar").addEventListener("click", async () => {
+  const st = $("#modelStatus");
+  const modelo = $("#modelQuick").value.trim();
+  if (!modelo) {
+    st.className = "status err";
+    st.textContent = "informe o nome do modelo.";
+    return;
+  }
+  st.className = "status";
+  st.textContent = "salvando…";
+  const r = await api("/api/config", {
+    method: "POST",
+    body: {
+      provider: (CONFIG.atual || {}).provider || "",
+      url: (CONFIG.atual || {}).url || "",
+      model: modelo,
+      max_risk: (CONFIG.atual || {}).max_risk || "exec",
+      max_rounds: (CONFIG.atual || {}).max_rounds || 14,
+    },
+  });
+  if (!r.ok) {
+    st.className = "status err";
+    st.textContent = r.erro || "não deu";
+    return;
+  }
+  st.className = "status ok";
+  st.textContent = "✅ agora usando " + modelo;
+  await carregarConfig();
+  await loadState();
+  setTimeout(() => $("#modelModal").classList.remove("show"), 900);
+});
+
 /* ───────────────── init ───────────────── */
 loadState();
 carregarLoja();
+carregarSessoes();
+renderSessaoBar();
 setInterval(loadState, 20000);

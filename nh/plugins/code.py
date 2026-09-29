@@ -56,7 +56,8 @@ def _run_code(lang: str, code: str, timeout: int) -> str:
     started = time.time()
     try:
         proc = subprocess.run(
-            exe, capture_output=True, text=True, timeout=max(1, min(int(timeout), 300))
+            exe, capture_output=True, text=True, timeout=max(1, min(int(timeout), 300)),
+            cwd=str(workspace()),  # roda na pasta da sessão aberta (o projeto)
         )
     except subprocess.TimeoutExpired:
         return f"⏱️ timeout de {timeout}s — código morto.\n{code[:300]}"

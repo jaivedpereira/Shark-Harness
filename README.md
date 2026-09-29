@@ -137,6 +137,27 @@ de navegador, com o ícone do emblema. No Termux, rode `termux-wake-lock` antes 
 O **campo de digitar fica preso** na parte de baixo, logo acima da barra de navegação:
 a conversa rola por trás dele, sem levar o campo junto.
 
+## 📂 Sessões — trabalhar numa pasta de projeto
+
+Sessão é o modo "Claude Code": você aponta uma **pasta** e o agente trabalha *dentro dela*.
+
+- **todas as ferramentas passam a enxergar aquela pasta** — `write_file`, `read_file`,
+  `grep_files` e os comandos rodam ali, não no workspace padrão
+- o agente recebe um **resumo do projeto** antes de responder (arquivos do topo, ramo do
+  git, começo do README) — então ele já sabe com o que está lidando
+- a **conversa fica salva por pasta** (últimas 60 mensagens), então amanhã ele lembra do
+  que vocês fizeram naquele projeto
+
+Na interface: **Agente** tem a barra no topo (`📂`) para escolher a sessão, e a aba
+**Sessões** cria/gerencia. Apagar uma sessão **não toca na pasta do projeto**.
+
+```bash
+# por dentro: a sessão grava aqui
+~/.shark-harness/sessions.json
+```
+
+---
+
 ### 📊 Uso do modelo (tokens e custo)
 
 Cada execução do agente é registrada em `~/.shark-harness/usage.jsonl` (uma linha JSON,

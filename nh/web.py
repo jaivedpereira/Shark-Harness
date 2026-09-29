@@ -16,11 +16,12 @@ import secrets
 import threading
 import urllib.error
 import webbrowser
+from urllib.parse import unquote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import agent, providers, scheduler
-from .core import Registry, load_plugins
+from .core import Registry, load_plugins, workspace
 from .guard import AUDIT_FILE
 from .paths import CONFIG_FILE, env, platform_name, read_config, update_config
 
@@ -134,6 +135,15 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, TypeError):
                 dias = 30
             return self._json(self._uso(dias))
+        if rota == "/api/sessoes":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            return self._json(self._sessoes())
+        if rota == "/api/fs":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            q = dict(pair.split("=", 1) for pair in urlparse(self.path).query.split("&") if "=" in pair)
+            return self._json(self._listar_pasta(unquote(q.get("pasta", ""))))
         return self._json({"error": "rota desconhecida"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -150,11 +160,13 @@ class Handler(BaseHTTPRequestHandler):
         if rota == "/api/cron":
             return self._json({"result": self._cron(body)})
         if rota == "/api/agent":
-            return self._json(self._agente(body.get("prompt", "")))
+            return self._json(self._agente(body.get("prompt", ""), str(body.get("sessao") or "")))
         if rota == "/api/config":
             return self._json(self._salvar_config(body))
         if rota == "/api/plugins":
             return self._json(self._acao_plugin(body))
+        if rota == "/api/sessoes":
+            return self._json(self._acao_sessao(body))
         if rota == "/api/usage":
             if str(body.get("acao") or "") == "limpar":
                 from . import usage
@@ -192,6 +204,81 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     # ------------------------------------------------------------------ loja ---
+    def _sessoes(self) -> dict:
+        """Lista as sessões (pastas de projeto) e o atalho do home do usuário."""
+        from . import sessions
+        from .paths import HOME
+
+        try:
+            itens = sessions.listar()
+        except Exception as exc:  # noqa: BLE001
+            return {"sessoes": [], "erro": f"{type(exc).__name__}: {exc}"}
+        raiz = Path.home()
+        return {
+            "sessoes": itens,
+            "inicio": str(raiz),
+            "workspace_padrao": str(workspace()),
+            "arquivo": str(sessions.SESSOES_FILE),
+        }
+
+    def _listar_pasta(self, pasta: str) -> dict:
+        """Navegador de pastas simples: devolve subpastas de um caminho."""
+        base = Path(unquote(pasta)).expanduser() if pasta else Path.home()
+        if not base.is_dir():
+            return {"erro": f"não é uma pasta: {base}", "pasta": str(base), "pastas": []}
+        pastas = []
+        try:
+            for item in sorted(base.iterdir()):
+                if item.name.startswith("."):
+                    continue
+                if item.is_dir():
+                    pastas.append({"nome": item.name, "caminho": str(item)})
+        except PermissionError:
+            return {"erro": f"sem permissão para listar {base}", "pasta": str(base), "pastas": []}
+        return {
+            "pasta": str(base),
+            "acima": str(base.parent) if base.parent != base else "",
+            "pastas": pastas[:200],
+            "tem_git": (base / ".git").is_dir(),
+        }
+
+    def _acao_sessao(self, body: dict) -> dict:
+        """Cria, apaga, renomeia ou limpa o histórico de uma sessão."""
+        from . import sessions
+
+        acao = str(body.get("acao") or "")
+        try:
+            if acao == "criar":
+                s = sessions.criar(str(body.get("nome") or ""), str(body.get("pasta") or ""),
+                                   str(body.get("modelo") or ""))
+                return {"ok": True, "msg": f"✅ sessão '{s['nome']}' criada em {s['pasta']}",
+                        "sessao": s, "lista": self._sessoes()}
+            if acao == "apagar":
+                m = sessions.apagar(str(body.get("id") or ""))
+                return {"ok": m.startswith("🗑️"), "msg": m, "lista": self._sessoes()}
+            if acao == "renomear":
+                m = sessions.renomear(str(body.get("id") or ""), str(body.get("nome") or ""))
+                return {"ok": m.startswith("✅"), "msg": m, "lista": self._sessoes()}
+            if acao == "limpar":
+                m = sessions.limpar_historico(str(body.get("id") or ""))
+                return {"ok": m.startswith("🧹"), "msg": m, "lista": self._sessoes()}
+            if acao == "modelo":
+                m = sessions.definir_modelo(str(body.get("id") or ""), str(body.get("modelo") or ""))
+                return {"ok": m.startswith("✅"), "msg": m, "lista": self._sessoes()}
+            if acao == "abrir":
+                s = sessions.obter(str(body.get("id") or ""))
+                if not s:
+                    return {"ok": False, "erro": "sessão não encontrada."}
+                return {
+                    "ok": True,
+                    "sessao": s,
+                    "historico": s.get("historico") or [],
+                    "arvore": sessions.arvore(s.get("pasta", "")),
+                }
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
+        return {"ok": False, "erro": f"ação desconhecida: {acao}"}
+
     def _uso(self, dias: int = 30) -> dict:
         """Histórico de uso do modelo (tokens e custo estimado)."""
         from . import usage
@@ -435,7 +522,8 @@ class Handler(BaseHTTPRequestHandler):
         return f"ação desconhecida: {act}"
 
     # ------------------------------------------------------------------ agente
-    def _agente(self, prompt: str) -> dict:
+    def _agente(self, prompt: str, sessao_id: str = "") -> dict:
+        """Roda o agente. Com `sessao_id`, trabalha na pasta daquela sessão."""
         if not prompt.strip():
             return {"answer": "pedido vazio", "steps": []}
         passos: list[dict] = []
@@ -443,7 +531,22 @@ class Handler(BaseHTTPRequestHandler):
 
         def on_step(tipo: str, nome: str, detalhe: str) -> None:
             with lock:
-                passos.append({"tipo": tipo, "nome": nome, "detalhe": detalhe[:4000]})
+                passos.append({"tipo": tipo, "nome": nome, "detalhe": (detalhe or "")[:4000]})
+
+        pasta, historico, sessao = "", None, None
+        if sessao_id:
+            from . import sessions
+
+            sessao = sessions.obter(sessao_id)
+            if sessao is None:
+                return {"answer": "❌ sessão não encontrada.", "steps": []}
+            pasta = str(sessao.get("pasta") or "")
+            # histórico só de texto (user/assistant): dá continuidade sem inchar
+            historico = [
+                {"role": m.get("role"), "content": m.get("content")}
+                for m in (sessao.get("historico") or [])
+                if m.get("role") in ("user", "assistant") and m.get("content")
+            ]
 
         resposta = agent.run_agent(
             prompt,
@@ -451,8 +554,24 @@ class Handler(BaseHTTPRequestHandler):
             max_risk=self.max_risk,
             verbose=False,
             on_step=on_step,
+            history=historico,
+            pasta=pasta,
         )
-        return {"answer": resposta, "steps": passos}
+
+        if sessao is not None:
+            from . import sessions
+
+            novo = list(historico or []) + [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": resposta},
+            ]
+            sessions.guardar_historico(sessao_id, novo)
+
+        return {
+            "answer": resposta,
+            "steps": passos,
+            "sessao": {"id": sessao_id, "nome": sessao.get("nome"), "pasta": pasta} if sessao else None,
+        }
 
 
 def serve(

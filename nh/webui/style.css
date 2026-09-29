@@ -3,16 +3,17 @@
    Sem gradiente exagerado, sem brilho, sem animação decorativa.
    ══════════════════════════════════════════════════════════════ */
 :root{
-  --bg:#080b10;
-  --side:#10151d;
-  --panel:#141924;
-  --panel2:#1a202b;
-  --line:#232b3a;
-  --line2:#313d52;
-  --text:#e6ebf2;
-  --muted:#98a4b6;
+  /* preto de verdade: o fundo é #000 e as superfícies são cinza neutro bem perto disso */
+  --bg:#000000;
+  --side:#0a0a0b;
+  --panel:#101012;
+  --panel2:#17171a;
+  --line:#212125;
+  --line2:#2e2e34;
+  --text:#ececf0;
+  --muted:#9a9aa4;
   --accent:#4d94ff;
-  --accent-dim:#233350;
+  --accent-dim:#1c283d;
   --ok:#3fb950;
   --warn:#d29922;
   --danger:#f85149;
@@ -21,10 +22,10 @@
   --r-lg:18px;
   --r-xl:24px;
   /* camadas de vidro: fundo translúcido + desfoque */
-  --vidro:rgba(20,25,36,.72);
-  --vidro-forte:rgba(16,21,29,.86);
-  --vidro-borda:rgba(255,255,255,.075);
-  --blur:blur(20px) saturate(150%);
+  --vidro:rgba(18,18,20,.72);
+  --vidro-forte:rgba(10,10,11,.86);
+  --vidro-borda:rgba(255,255,255,.07);
+  --blur:blur(20px) saturate(140%);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -296,7 +297,7 @@ td.n{font-family:ui-monospace,monospace;color:#8fbfff;white-space:nowrap}
   /* ── navegação de baixo ── */
   /* barra de baixo flutuante, arredondada e em vidro fosco */
   .tabbar{
-    display:grid;grid-template-columns:repeat(6,1fr);
+    display:grid;grid-template-columns:repeat(7,1fr);
     position:fixed;z-index:40;
     left:10px;right:10px;
     bottom:calc(10px + env(safe-area-inset-bottom,0px));
@@ -411,15 +412,17 @@ td.n{font-family:ui-monospace,monospace;color:#8fbfff;white-space:nowrap}
 /* ══════════════════════════════════════════════════════════════
    VIDRO FOSCO — painéis translúcidos com desfoque
    ══════════════════════════════════════════════════════════════ */
-/* O desfoque só é visível se houver algo atrás para difundir. Esta camada
+/* Bem discreto de propósito: se ficar forte, o preto deixa de parecer preto (fica
+   marinho). O suficiente para o vidro ter o que desfocar, e nada além.
+   O desfoque só é visível se houver algo atrás para difundir. Esta camada
    ambiente (bem discreta, dois focos de azul a ~13%) é o que dá corpo ao vidro —
    sem ela os painéis parecem só cinza chapado. */
 body::before{
   content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
   background:
-    radial-gradient(760px 560px at 8% -8%, rgba(77,148,255,.15), transparent 66%),
-    radial-gradient(680px 520px at 92% 106%, rgba(77,148,255,.11), transparent 62%),
-    radial-gradient(520px 420px at 50% 46%, rgba(120,170,255,.05), transparent 70%);
+    radial-gradient(720px 520px at 6% -10%, rgba(120,160,235,.055), transparent 70%),
+    radial-gradient(640px 480px at 94% 108%, rgba(120,160,235,.035), transparent 66%),
+    radial-gradient(560px 460px at 50% 48%, rgba(255,255,255,.022), transparent 74%);
 }
 .app{position:relative;z-index:1}
 .side,.main{background:transparent}
@@ -654,4 +657,121 @@ body::before{
   .ustat strong{font-size:18px}
   .uso-grafico{height:88px;gap:3px}
   .uso-head{align-items:flex-start}
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RESPOSTA EM MARKDOWN (títulos, listas, código, links)
+   ══════════════════════════════════════════════════════════════ */
+.bubble h3,.bubble h4,.bubble h5,.bubble h6{margin:10px 0 5px;font-size:13.5px;font-weight:700;letter-spacing:-.1px}
+.bubble h3{font-size:14.5px}
+.bubble p{margin:5px 0}
+.bubble p:first-of-type{margin-top:2px}
+.bubble ul{margin:6px 0 6px 18px;display:flex;flex-direction:column;gap:3px}
+.bubble li{font-size:13.5px;line-height:1.55}
+.bubble code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+  background:rgba(255,255,255,.06);border:1px solid var(--vidro-borda);
+  border-radius:5px;padding:1px 5px;
+}
+.bubble a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(77,148,255,.35)}
+.bubble strong{color:#fff}
+.codeblk{
+  margin:9px 0;border:1px solid var(--vidro-borda);border-radius:var(--r);
+  overflow:hidden;background:rgba(0,0,0,.45);
+}
+.codehd{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:5px 10px;background:rgba(255,255,255,.035);
+  font-size:10.5px;color:var(--muted);border-bottom:1px solid var(--vidro-borda);
+}
+.codeblk pre{
+  margin:0;padding:11px 12px;overflow-x:auto;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.5;
+  white-space:pre;color:#dfe6f0;
+}
+.copy{
+  background:none;border:1px solid var(--vidro-borda);border-radius:7px;
+  color:var(--muted);font:inherit;font-size:10.5px;padding:3px 9px;cursor:pointer;transition:.15s;
+}
+.copy:hover{color:var(--text);border-color:var(--line2)}
+.copy.mini{margin-top:9px;padding:4px 11px;font-size:11px}
+
+/* botão de parar */
+.ghost.parar{border-color:rgba(248,81,73,.45);color:#f8a5a0}
+.ghost.parar:hover{border-color:var(--danger);color:var(--danger)}
+
+/* ══════════════════════════════════════════════════════════════
+   SESSÕES — barra da sessão, lista e navegador de pastas
+   ══════════════════════════════════════════════════════════════ */
+.sbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex:none}
+.sbar-pick{
+  display:flex;align-items:center;gap:9px;flex:1;min-width:0;
+  background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);
+  border-radius:999px;padding:8px 14px;cursor:pointer;text-align:left;
+  color:var(--muted);font:inherit;font-size:12.5px;transition:.15s;
+}
+.sbar-pick:hover{border-color:var(--line2);color:var(--text)}
+.sbar.on .sbar-pick{background:rgba(77,148,255,.10);border-color:rgba(77,148,255,.30);color:var(--text)}
+.sbar-ico{flex:none;font-size:14px}
+.sbar-txt{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12.5px;
+}
+.sbar.on .sbar-txt{font-weight:600;color:#fff}
+.chev.down{transform:rotate(180deg)}
+.arvore{
+  flex:none;margin-bottom:12px;padding:12px 14px;border-radius:var(--r);
+  background:rgba(0,0,0,.45);border:1px solid var(--vidro-borda);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.6;
+  color:var(--muted);max-height:240px;overflow:auto;white-space:pre;
+}
+.seslist{display:flex;flex-direction:column;gap:11px}
+.sescard{
+  border:1px solid var(--vidro-borda);border-radius:var(--r);padding:14px;
+  background:var(--vidro);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  display:flex;flex-direction:column;gap:10px;
+}
+.sescard.on{border-color:rgba(77,148,255,.45);background:rgba(77,148,255,.07)}
+.sescard-top{display:flex;align-items:center;gap:11px}
+.sescard-ico{font-size:19px;flex:none}
+.sescard-nome{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sescard-nome strong{font-size:14.5px}
+.sescard-nome code{
+  font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.sescard-meta{font-size:11.5px;color:var(--muted)}
+.sescard-acoes{display:flex;gap:7px;flex-wrap:wrap}
+.sespick{display:flex;flex-direction:column;gap:8px}
+.sespick-item{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+  background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);
+  border-radius:var(--r);padding:12px 14px;color:var(--text);font:inherit;transition:.15s;
+}
+.sespick-item:hover{border-color:var(--line2);background:rgba(255,255,255,.055)}
+.sespick-item.on{border-color:rgba(77,148,255,.45);background:rgba(77,148,255,.10)}
+.sespick-item > span{font-size:18px;flex:none}
+.sespick-item div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sespick-item strong{font-size:13.5px}
+.sespick-item em{font-size:11px;color:var(--muted);font-style:normal;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fs-caminho{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.fs-caminho code{
+  flex:1;min-width:0;font-size:11.5px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  background:rgba(0,0,0,.4);padding:7px 10px;border-radius:8px;border:1px solid var(--vidro-borda);
+}
+.fs-lista{display:flex;flex-direction:column;gap:4px;max-height:46vh;overflow:auto}
+.fs-item{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+  background:none;border:1px solid transparent;border-radius:10px;
+  padding:10px 12px;color:var(--text);font:inherit;font-size:13px;transition:.12s;
+}
+.fs-item:hover{background:rgba(255,255,255,.05);border-color:var(--vidro-borda)}
+@media(max-width:900px){
+  .sbar{flex-wrap:wrap}
+  .sbar-pick{width:100%}
+  .sescard-acoes button{flex:1}
+  .fs-lista{max-height:38vh}
+  .codeblk pre,.bubble code{font-size:11.5px}
 }

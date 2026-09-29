@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -76,6 +77,94 @@ def _post(url: str, payload: dict, api_key: str = "", timeout: int = 180) -> dic
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _erro_do_provedor(resp: dict) -> str:
+    """Extrai uma mensagem LEGÍVEL de uma resposta de erro do provedor.
+
+    Alguns provedores devolvem HTTP 200 com o erro embutido no corpo
+    (`{"error": {"message": "Provider returned an empty response", ...}}`), o que
+    antes virava um JSON cru na tela do usuário.
+    """
+    e = resp.get("error")
+    if isinstance(e, dict):
+        meta = e.get("metadata") or {}
+        codigo = e.get("code") or meta.get("status") or ""
+        tipo = meta.get("error_type") or ""
+        msg = str(e.get("message") or "erro do provedor").strip()
+        detalhe = " · ".join(x for x in (f"código {codigo}" if codigo else "", str(tipo)) if x)
+        return f"{msg}{f' ({detalhe})' if detalhe else ''}"
+    if isinstance(e, str):
+        return e.strip()
+    return ""
+
+
+def _modelos_de_reserva(modelo: str, url: str) -> list[str]:
+    """Modelos alternativos para quando o principal cai no provedor.
+
+    Vem de `SHARK_LLM_FALLBACK` (lista separada por vírgula). Sem isso, usa uma
+    lista de modelos gratuitos — mas só quando o endpoint é o OpenRouter, senão
+    esses nomes não existem no provedor e só atrapalhariam.
+    """
+    configurado = env("LLM_FALLBACK")
+    if configurado:
+        reservas = [m.strip() for m in configurado.split(",") if m.strip()]
+    elif "openrouter" in (url or "").lower():
+        reservas = [
+            "nvidia/nemotron-3.5-lightning:free",
+            "qwen/qwen3.8-27b:free",
+            "google/gemini-2.0-flash-exp:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+        ]
+    else:
+        reservas = []
+    return [m for m in reservas if m != modelo]
+
+
+def _chamar_llm(url: str, payload: dict, api_key: str, modelos: list[str], *,
+                tentativas: int = 2, pausa: float = 1.6) -> tuple[dict | None, str, str, str]:
+    """Chama o modelo tentando de novo e caindo para os reservas.
+
+    Devolve (resposta, modelo_que_respondeu, erro_legivel, dica). Resposta None
+    significa que nenhum modelo respondeu.
+    """
+    erros: list[str] = []
+    dica = ""
+    for modelo in modelos:
+        payload["model"] = modelo
+        for tentativa in range(1, tentativas + 1):
+            try:
+                resp = _post(url, payload, api_key)
+            except urllib.error.HTTPError as exc:
+                corpo = exc.read().decode("utf-8", "replace")[:300]
+                erros.append(f"{modelo}: HTTP {exc.code} — {corpo.strip()[:140]}")
+                if exc.code in (401, 403):
+                    dica = ("confira a chave em Configurações (ou SHARK_LLM_KEY); "
+                            "a resposta do provedor foi " + ("não autorizada" if exc.code == 401 else "negada") + ".")
+                    return None, modelo, " | ".join(erros[-3:]), dica
+                if exc.code == 402:
+                    dica = "a conta está sem saldo — troque de modelo ou use um ':free'."
+                if "1010" in corpo:
+                    dica = "o Cloudflare bloqueou a requisição (User-Agent/rede)."
+            except Exception as exc:  # noqa: BLE001
+                erros.append(f"{modelo}: {type(exc).__name__}: {exc}")
+                dica = dica or "não consegui falar com o provedor — confira a internet."
+            else:
+                erro = _erro_do_provedor(resp)
+                if erro:
+                    erros.append(f"{modelo}: {erro}")
+                    dica = dica or ("o provedor está instável nesse modelo; "
+                                    "tentei de novo e chamei os modelos reserva.")
+                    if "rate" in erro.lower() or "429" in erro:
+                        dica = "rate-limit do provedor — espere alguns segundos."
+                elif resp.get("choices"):
+                    return resp, modelo, "", ""
+                else:
+                    erros.append(f"{modelo}: resposta sem conteúdo")
+                    dica = dica or "o provedor respondeu vazio."
+            if tentativa < tentativas:
+                time.sleep(pausa * tentativa)
+    return None, modelos[0] if modelos else "", " | ".join(erros[-4:]), dica
+
+
 def _tool_result_text(msg: dict) -> str:
     content = msg.get("content")
     if isinstance(content, str) and content.strip():
@@ -98,11 +187,16 @@ def run_agent(
     verbose: bool = True,
     history: list | None = None,
     on_step=None,
+    pasta: str = "",
 ) -> str:
     """Roda o agente: manda o pedido ao LLM e executa as ferramentas que ele escolher.
 
     Devolve a resposta final em texto. `history` opcional mantém o contexto entre
     chamadas (lista de mensagens no formato OpenAI).
+
+    `pasta` ativa o modo SESSÃO: as ferramentas passam a trabalhar dentro daquela
+    pasta de projeto e o modelo recebe um resumo dela (arquivos, git, README) antes
+    de responder — é o que faz ele saber com o que está lidando.
 
     `on_step(tipo, nome, detalhe)` é chamado a cada evento — usado pela interface
     web para mostrar os passos ao vivo. Tipos: 'chamada', 'resultado', 'resposta',
@@ -122,7 +216,31 @@ def run_agent(
     max_rounds = max(2, min(int(max_rounds), 60))
 
     tools = [t.as_openai() for t in reg.subset(max_risk=max_risk)]
-    messages: list = history if history is not None else [{"role": "system", "content": SYSTEM}]
+    sistema = SYSTEM
+    if pasta:
+        # modo sessão: o agente trabalha DENTRO da pasta do projeto
+        try:
+            from . import sessions
+            from .core import definir_workspace
+
+            definir_workspace(pasta)
+            resumo = sessions.contexto(pasta)
+            if resumo:
+                sistema = (SYSTEM + "\n\n--- CONTEXTO DO PROJETO ABERTO (sessão) ---\n"
+                           + resumo
+                           + "\n\nTrabalhe dentro dessa pasta. Caminhos relativos apontam para ela.")
+        except Exception as exc:  # noqa: BLE001
+            step("erro", "sessão", f"não consegui abrir a pasta '{pasta}': {exc}")
+    else:
+        try:
+            from .core import definir_workspace
+
+            definir_workspace(None)
+        except Exception:  # noqa: BLE001
+            pass
+
+    messages: list = [{"role": "system", "content": sistema}]
+    messages.extend(list(history or []))
     messages.append({"role": "user", "content": user_text})
 
     def show(*parts: str) -> None:
@@ -177,26 +295,36 @@ def run_agent(
             payload["tools"] = []
             payload["tool_choice"] = "none"
         try:
-            resp = _post(url, payload, api_key)
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", "replace")[:400]
-            dica = ""
-            if "1010" in body:
-                dica = ("\n💡 1010 = Cloudflare bloqueou a requisição (UA/IP). "
-                        "Tente rodar de outra rede ou de um endpoint local (Ollama).")
-            elif exc.code in (401, 403):
-                dica = "\n💡 confira a chave em Configurações (ou SHARK_LLM_KEY) e se o modelo existe nesse provedor."
-            msg = f"ERRO HTTP {exc.code} no LLM: {body}{dica}"
+            resp, modelo_usado, erro_llm, dica = _chamar_llm(
+                url, payload, api_key, [model] + _modelos_de_reserva(model, url)
+            )
+        except Exception as exc:  # noqa: BLE001 — blindagem: nada derruba o loop
+            resp, modelo_usado, erro_llm, dica = None, model, f"{type(exc).__name__}: {exc}", ""
+
+        if resp is None:
+            msg = (f"❌ O provedor não respondeu.\n"
+                   f"   {modelo_usado or model}: {erro_llm or 'sem detalhe'}\n"
+                   + (f"\n💡 {dica}\n" if dica else "")
+                   + "\nO que dá para fazer:\n"
+                     "  • tentar de novo (costuma resolver se foi instabilidade passageira)\n"
+                     "  • trocar de modelo em Ajustes → Provedor de IA\n"
+                     "  • escolher um modelo ':free' do OpenRouter, que costuma ser mais estável\n"
+                     "  • definir SHARK_LLM_FALLBACK com modelos reserva separados por vírgula")
             step("erro", "llm", msg)
+            _fechar_uso(rodada)
             return msg
-        except Exception as exc:  # noqa: BLE001
-            msg = f"ERRO chamando o LLM ({url}): {type(exc).__name__}: {exc}"
-            step("erro", "llm", msg)
-            return msg
+
+        if modelo_usado != model:
+            step("info", f"reserva: {modelo_usado}",
+                 f"o modelo principal ({model}) não respondeu; segui com este")
+            model = modelo_usado  # continua a conversa no que funcionou
 
         choices = resp.get("choices") or []
         if not choices:
-            return f"ERRO: resposta sem 'choices': {json.dumps(resp)[:300]}"
+            msg = "❌ O provedor respondeu sem conteúdo. Tente de novo ou troque de modelo."
+            step("erro", "llm", msg)
+            _fechar_uso(rodada)
+            return msg
         # soma o consumo desta rodada (nem todo provedor devolve 'usage')
         _uso = resp.get("usage") or {}
         for _k in uso_total:

@@ -345,11 +345,33 @@ def _stringify(out: Any) -> str:
     return str(out)
 
 
+_WORKSPACE_ATUAL: Path | None = None
+
+
+def definir_workspace(pasta) -> None:
+    """Define a pasta de trabalho das ferramentas (uma sessão aponta para um projeto).
+
+    Passe None para voltar ao workspace padrão do harness.
+    """
+    global _WORKSPACE_ATUAL
+    if not pasta:
+        _WORKSPACE_ATUAL = None
+        return
+    p = Path(pasta).expanduser().resolve()
+    if not p.is_dir():
+        raise NotADirectoryError(f"não é uma pasta: {p}")
+    _WORKSPACE_ATUAL = p
+
+
 def workspace() -> Path:
+    """Pasta de trabalho atual: a da sessão aberta, ou a padrão do harness."""
     from .paths import WORKSPACE, ensure_dirs
 
+    if _WORKSPACE_ATUAL is not None:
+        return _WORKSPACE_ATUAL
     ensure_dirs()
     return WORKSPACE
 
 
-__all__ = ["Registry", "Tool", "load_plugins", "build_schema", "Risk", "workspace"]
+__all__ = ["Registry", "Tool", "load_plugins", "build_schema", "Risk", "workspace",
+           "definir_workspace"]

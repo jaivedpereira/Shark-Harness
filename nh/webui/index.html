@@ -29,6 +29,7 @@
 
     <nav class="nav" id="nav">
       <button class="nav-item active" data-view="chat">Agente</button>
+      <button class="nav-item" data-view="sessoes">Sessões</button>
       <button class="nav-item" data-view="tools">Ferramentas</button>
       <button class="nav-item" data-view="cron">Agendador</button>
       <button class="nav-item" data-view="audit">Auditoria</button>
@@ -51,12 +52,26 @@
       <header class="vhead">
         <div class="vhead-row">
           <h2>Agente</h2>
-          <button class="ghost small" id="btnRaciocinio" title="esconder o raciocínio e as ferramentas">
-            <span class="eye"></span><span class="rlabel">raciocínio: visível</span>
-          </button>
+          <div class="row-actions">
+            <button class="ghost small" id="btnModelo" title="trocar o modelo">modelo</button>
+            <button class="ghost small" id="btnRaciocinio" title="esconder o raciocínio e as ferramentas">
+              <span class="eye"></span><span class="rlabel">raciocínio: visível</span>
+            </button>
+          </div>
         </div>
         <p>Descreva a tarefa. Ele escolhe as ferramentas, executa e mostra cada passo.</p>
       </header>
+      <div class="sbar" id="sbar">
+        <button class="sbar-pick" id="sbarPick" title="escolher uma sessão de projeto">
+          <span class="sbar-ico">📂</span>
+          <span class="sbar-txt" id="sbarTxt">Chat livre — sem pasta de projeto</span>
+          <span class="chev down"></span>
+        </button>
+        <button class="ghost small" id="sbarClose" title="sair da sessão" style="display:none">sair</button>
+        <button class="ghost small" id="sbarArvore" title="ver os arquivos do projeto" style="display:none">arquivos</button>
+      </div>
+      <div class="arvore" id="arvoreBox" style="display:none"></div>
+
       <div class="chat" id="chat">
         <div class="msg bot">
           <div class="bubble">
@@ -74,7 +89,8 @@
       </div>
       <form class="composer" id="formAgent">
         <textarea id="prompt" rows="1" placeholder="O que eu faço agora, chefe?"></textarea>
-        <button class="primary" type="submit">Enviar</button>
+        <button class="primary" id="btnEnviar" type="submit">Enviar</button>
+        <button class="ghost parar" id="btnParar" type="button" style="display:none">Parar</button>
       </form>
     </section>
 
@@ -155,6 +171,37 @@
         <p class="hint" id="cHint"></p>
       </div>
       <div id="jobList" class="joblist"></div>
+    </section>
+
+    <!-- ── Sessões (pastas de projeto) ── -->
+    <section class="view" id="view-sessoes">
+      <header class="vhead">
+        <h2>Sessões</h2>
+        <p>Aponte uma pasta de projeto e converse com o agente <strong>dentro dela</strong>.
+        Ele lê os arquivos, roda comandos ali e lembra da conversa.</p>
+      </header>
+
+      <div class="card">
+        <h3>Nova sessão</h3>
+        <div class="row">
+          <label>Nome (opcional)
+            <input id="sesNome" placeholder="Shark Harness" />
+          </label>
+          <label>Pasta do projeto
+            <input id="sesPasta" placeholder="/home/você/projeto" />
+          </label>
+        </div>
+        <div class="row between">
+          <span class="status" id="sesStatus"></span>
+          <div class="row-actions">
+            <button class="ghost" id="sesNavegar" type="button">Escolher pasta…</button>
+            <button class="primary" id="sesCriar" type="button">Criar sessão</button>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sechead">Suas sessões</h3>
+      <div class="seslist" id="sesLista"></div>
     </section>
 
     <!-- ── Auditoria ── -->
@@ -283,6 +330,11 @@
       <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.7L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>
     <span>Agente</span>
   </button>
+  <button class="tab" data-view="sessoes" title="Sessões de projeto">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 7.5A2 2 0 0 1 5 5.5h3.6l1.6 2H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span>Sessões</span>
+  </button>
   <button class="tab" data-view="tools" title="Ferramentas">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
@@ -310,6 +362,64 @@
     <span>Ajustes</span>
   </button>
 </nav>
+
+<!-- ══════════ modal de escolher sessão ══════════ -->
+<div class="modal" id="sesModal">
+  <div class="modal-card">
+    <header>
+      <h3>Onde o agente vai trabalhar</h3>
+      <button id="sesModalClose">✕</button>
+    </header>
+    <p class="mdesc">Escolha uma sessão (uma pasta de projeto) ou converse no espaço livre do harness.</p>
+    <div class="sespick" id="sesPickLista"></div>
+    <div class="row-actions" style="margin-top:14px">
+      <button class="primary" id="sesPickNova" type="button">Nova sessão</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ modal de modelo ══════════ -->
+<div class="modal" id="modelModal">
+  <div class="modal-card">
+    <header>
+      <h3>Trocar o modelo</h3>
+      <button id="modelModalClose">✕</button>
+    </header>
+    <p class="mdesc">O modelo é global (vale para o chat e para o agente). Trocar aqui é o mesmo
+    que mudar em Ajustes → Provedor de IA.</p>
+    <label class="block">Modelo
+      <input id="modelQuick" list="modelLista" placeholder="nome do modelo" />
+      <datalist id="modelLista"></datalist>
+    </label>
+    <div class="row between">
+      <span class="status" id="modelStatus"></span>
+      <div class="row-actions">
+        <button class="primary" id="modelSalvar" type="button">Usar este</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ navegador de pastas ══════════ -->
+<div class="modal" id="fsModal">
+  <div class="modal-card">
+    <header>
+      <h3>Escolher a pasta do projeto</h3>
+      <button id="fsClose">✕</button>
+    </header>
+    <div class="fs-caminho">
+      <button class="ghost small" id="fsAcima" type="button">↑ acima</button>
+      <code id="fsAtual">—</code>
+    </div>
+    <div class="fs-lista" id="fsLista"></div>
+    <div class="row between" style="margin-top:14px">
+      <span class="status" id="fsStatus"></span>
+      <div class="row-actions">
+        <button class="primary" id="fsUsar" type="button">Usar esta pasta</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════ modal de ferramenta ══════════ -->
 <div class="modal" id="modal">
