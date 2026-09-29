@@ -262,20 +262,132 @@ td.n{font-family:ui-monospace,monospace;color:#8fbfff;white-space:nowrap}
 .pre.out{margin-top:14px;border-left:2px solid var(--accent)}
 #view-sys .pre{flex:1;max-height:none}
 
-/* ───────────── celular ───────────── */
+/* ══════════════════════════════════════════════════════════════
+   CELULAR — barra em cima, navegação embaixo, tudo do tamanho do dedo
+   ══════════════════════════════════════════════════════════════ */
+.mtop,.tabbar{display:none}
+
 @media(max-width:900px){
-  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:100dvh}
-  .side{flex-direction:row;align-items:center;gap:10px;padding:10px 12px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line)}
-  .brand{flex-direction:row;gap:9px;flex:none;padding:0}
-  .logo{width:38px}
-  .brand-text{text-align:left}
-  .brand-text h1{font-size:13.5px}
-  .brand-text p{display:none}
-  .nav{flex-direction:row;gap:2px}
-  .nav-item{padding:7px 11px;font-size:13px;white-space:nowrap}
-  .nav-item.active::before{content:""}
-  .side-foot{display:none}
-  .view{height:auto;padding:16px}
-  .grid{grid-template-columns:1fr}
-  .suggest{display:none}
+  .app{grid-template-columns:1fr;height:100dvh}
+  .side{display:none}
+
+  /* ── barra de cima ── */
+  .mtop{
+    display:flex;align-items:center;gap:10px;
+    position:fixed;top:0;left:0;right:0;z-index:40;height:52px;
+    padding:0 14px calc(0px);
+    padding-top:env(safe-area-inset-top,0px);
+    background:var(--side);border-bottom:1px solid var(--line);
+  }
+  .mtop .mlogo{width:30px;height:auto;mix-blend-mode:screen;flex:none}
+  .mtop h1{font-size:14.5px;font-weight:650;flex:1;color:#fff}
+  .mtop .dot{width:8px;height:8px}
+
+  /* ── navegação de baixo ── */
+  .tabbar{
+    display:grid;grid-template-columns:repeat(6,1fr);
+    position:fixed;bottom:0;left:0;right:0;z-index:40;
+    background:var(--side);border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  .tab{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;padding:9px 2px 7px;min-height:52px;
+    color:var(--muted);background:none;border:none;
+    font-size:10.5px;font-weight:600;letter-spacing:-.2px;
+    transition:color .12s;position:relative;
+  }
+  .tab svg{width:21px;height:21px}
+  /* rótulos em português: um pouco menores para caber nos 6 espaços iguais */
+  .tab span{line-height:1;font-size:10px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .tab.active{color:var(--accent)}
+  .tab.active::after{
+    content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:26px;height:2px;background:var(--accent);border-radius:0 0 3px 3px;
+  }
+  .tab:active{background:var(--panel)}
+
+  /* ── conteúdo entre as duas barras ── */
+  .view{
+    height:auto;
+    padding:16px 14px calc(66px + env(safe-area-inset-bottom,0px));
+    margin-top:calc(52px + env(safe-area-inset-top,0px));
+    overflow:visible;
+  }
+  .main{display:block;overflow-y:auto;height:100dvh;-webkit-overflow-scrolling:touch}
+  .vhead{margin-bottom:14px}
+  .vhead h2{font-size:18px}
+  .vhead p{font-size:12.5px}
+
+  /* ── chat: input colado em cima da tabbar ── */
+  .chat{max-width:none;overflow:visible;padding-bottom:6px}
+  .chat > *:first-child{margin-top:0}
+  .bubble,.steps{max-width:100%}
+  .bubble{font-size:14.5px}
+  .step{font-size:12.5px;padding:9px 11px}
+  .suggest{
+    display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;
+    max-width:none;margin:10px 0 8px;padding-bottom:4px;
+    scrollbar-width:none;-ms-overflow-style:none;
+  }
+  .suggest::-webkit-scrollbar{display:none}
+  .suggest button{flex:none}
+  .composer{max-width:none;gap:7px}
+  .composer textarea{font-size:16px} /* 16px evita o zoom automático no iOS */
+  .composer .primary{padding:11px 16px}
+
+  /* ── alvos de toque maiores ── */
+  .nav-item,.act,.chip,.ghost,.primary{min-height:42px}
+  .act{padding:9px 13px}
+  .chip{padding:8px 14px}
+
+  /* ── filtros e grid ── */
+  .filters{gap:8px}
+  .filters input{max-width:none}
+  .chips{flex-wrap:nowrap;overflow-x:auto;width:100%;padding-bottom:3px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .grid{grid-template-columns:1fr;overflow:visible;gap:9px;padding-bottom:8px}
+
+  /* ── auditoria: tabela vira cartão (tabela no celular é sofrimento) ── */
+  .tablewrap{overflow:visible;border:none;background:none}
+  table,tbody,tr,td{display:block;width:100%}
+  thead{display:none}
+  tr{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:10px 12px;margin-bottom:8px;
+  }
+  tr:hover td{background:none}
+  td{border:none;padding:1px 0}
+  td.t{font-size:11px}
+  td.n{font-size:12.5px;margin-top:2px}
+  td:last-child{font-size:12.5px;color:var(--muted);margin-top:4px;word-break:break-word}
+
+  /* ── o modal ocupa a tela toda (melhor para ler a saída) ── */
+  .modal{padding:0;align-items:stretch}
+  .modal-card{
+    width:100%;max-height:100dvh;height:100dvh;border-radius:0;border:none;
+    padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));
+    padding-top:calc(16px + env(safe-area-inset-top,0px));
+  }
+  .modal-card header{position:sticky;top:0;background:var(--panel);padding-bottom:8px;z-index:2}
+  .mform label{font-size:13px}
+  .pre{font-size:12px;max-height:none}
+
+  /* ── formulários em coluna ── */
+  .row{gap:10px}
+  .row label{min-width:100%}
+  .row.between{align-items:stretch}
+  .row-actions{width:100%}
+  .row-actions button{flex:1}
+  .card{padding:15px}
+  .job{padding:13px}
+  .job .acts{width:100%}
+  #view-sys .pre{max-height:none}
+}
+
+/* telas muito estreitas (iPhone SE e afins) */
+@media(max-width:360px){
+  .tab span{font-size:9.5px}
+  .tab svg{width:19px;height:19px}
+  .brand-text h1{font-size:13px}
 }

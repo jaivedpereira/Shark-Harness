@@ -191,6 +191,13 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Diagnóstico: testa escrita de arquivo de verdade e aponta o que corrigir."""
+    reg = _load()
+    print(reg.dispatch("diagnostico"))
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     argv = []
     if args.list:
@@ -267,6 +274,9 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("audit", help="últimas ações executadas")
     a.add_argument("lines", nargs="?", type=int, default=20)
     a.set_defaults(func=cmd_audit)
+
+    d2 = sub.add_parser("doctor", help="diagnóstico do ambiente (testa escrita de arquivo de verdade)")
+    d2.set_defaults(func=cmd_doctor)
 
     s = sub.add_parser("serve", help="servidor MCP em stdio")
     s.add_argument("--list", action="store_true")

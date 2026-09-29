@@ -37,6 +37,8 @@ async function loadState() {
 
   const llm = STATE.llm || {};
   $("#llmState").className = "dot " + (llm.configured ? "ok" : "err");
+  const mdot = $("#mDot");
+  if (mdot) mdot.className = "dot " + (llm.configured ? "ok" : "err");
   // nome curto do modelo para não quebrar linha na barra lateral
   const curto = String(llm.model || "").split("/").pop().replace(/:free$/, "").slice(0, 20);
   $("#llmText").textContent = llm.configured ? `IA ligada · ${curto}` : "IA desligada";
@@ -49,16 +51,25 @@ async function loadState() {
 }
 
 /* ───────────────── navegação ───────────────── */
-$("#nav").addEventListener("click", (e) => {
-  const b = e.target.closest(".nav-item");
-  if (!b) return;
-  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+function irPara(view) {
+  // a barra lateral (PC) e a tabbar (celular) mostram a MESMA view
+  document.querySelectorAll(".nav-item, .tab").forEach((n) => {
+    n.classList.toggle("active", n.dataset.view === view);
+  });
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-  b.classList.add("active");
-  const v = $("#view-" + b.dataset.view);
-  if (v) v.classList.add("active");
-  if (b.dataset.view === "config") carregarConfig();
-  else if (b.dataset.view === "audit" || b.dataset.view === "cron") loadState();
+  const alvo = $("#view-" + view);
+  if (alvo) alvo.classList.add("active");
+  const rolagem = $(".main");
+  if (rolagem) rolagem.scrollTop = 0;
+  window.scrollTo(0, 0);
+
+  if (view === "config") carregarConfig();
+  else if (view === "audit" || view === "cron") loadState();
+}
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".nav-item, .tab");
+  if (b && b.dataset.view) irPara(b.dataset.view);
 });
 
 /* ───────────────── ferramentas ───────────────── */

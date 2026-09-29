@@ -45,18 +45,70 @@ for _cand in (Path.cwd() / ".env", Path.home() / ".shark-harness" / ".env"):
 # ----------------------------------------------------------------- caminhos ---
 # HOME/WORKSPACE usam os.environ direto: servem para ACHAR o config.json, então
 # não podem depender dele.
+
+
+def _home_do_usuario() -> Path:
+    """Descobre o home de forma robusta.
+
+    No Termux/Android `Path.home()` pode devolver `/` (quando o `HOME` não está
+    definido e não existe entrada no passwd) — e aí o workspace vira
+    `/shark-workspace`, que o Android não deixa criar. Daí a ordem de tentativas:
+    HOME do ambiente → pasta do PREFIX do Termux → home do usuário → cwd.
+    """
+    for cand in (
+        os.environ.get("HOME"),
+        # Termux: $PREFIX = /data/data/com.termux/files/usr  →  ../home
+        (os.path.join(os.path.dirname(os.environ["PREFIX"]), "home")
+         if os.environ.get("PREFIX", "").startswith("/data/data/") else None),
+    ):
+        if cand:
+            p = Path(cand)
+            if p.is_dir() and os.access(str(p), os.W_OK):
+                return p
+    try:
+        p = Path.home()
+        if p.is_dir() and os.access(str(p), os.W_OK):
+            return p
+    except Exception:  # noqa: BLE001
+        pass
+    return Path.cwd()
+
+
+_HOME_USUARIO = _home_do_usuario()
+
 HOME = Path(
     os.environ.get("SHARK_HOME")
     or os.environ.get("NH_HOME")
-    or (Path.home() / ".shark-harness")
+    or (_HOME_USUARIO / ".shark-harness")
 )
 JOBS_FILE = HOME / "jobs.json"
 AUDIT_FILE = HOME / "audit.log"
 CONFIG_FILE = HOME / "config.json"
-WORKSPACE = Path(
-    os.environ.get("SHARK_WORKSPACE")
-    or os.environ.get("NH_WORKSPACE")
-    or (Path.home() / "shark-workspace")
+def _resolver_workspace(preferido: Path) -> Path:
+    """Devolve um workspace que REALMENTE dá para escrever.
+
+    Testa criando de verdade (é onde o Termux falhava: apontava para um caminho
+    que o Android não deixa criar e todo `write_file` morria).
+    """
+    candidatos = [preferido, _HOME_USUARIO / "shark-workspace", Path.cwd() / "shark-workspace"]
+    for cand in candidatos:
+        try:
+            cand.mkdir(parents=True, exist_ok=True)
+            teste = cand / ".nh-teste-escrita"
+            teste.write_text("ok", encoding="utf-8")
+            teste.unlink(missing_ok=True)
+            return cand
+        except Exception:  # noqa: BLE001
+            continue
+    return Path.cwd()
+
+
+WORKSPACE = _resolver_workspace(
+    Path(
+        os.environ.get("SHARK_WORKSPACE")
+        or os.environ.get("NH_WORKSPACE")
+        or (_HOME_USUARIO / "shark-workspace")
+    )
 )
 
 # nome da variável de ambiente -> chave correspondente no config.json

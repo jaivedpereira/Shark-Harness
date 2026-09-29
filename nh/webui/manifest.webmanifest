@@ -1,0 +1,16 @@
+{
+  "name": "Shark Harness",
+  "short_name": "Shark Harness",
+  "description": "Agente de tarefas: shell, arquivos, código, agendamento e controle do dispositivo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080b10",
+  "theme_color": "#080b10",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/logo.jpg", "sizes": "512x389", "type": "image/jpeg", "purpose": "any" },
+    { "src": "/logo.jpg", "sizes": "192x146", "type": "image/jpeg", "purpose": "maskable" }
+  ]
+}

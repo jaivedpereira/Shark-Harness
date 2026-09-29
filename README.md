@@ -117,20 +117,46 @@ o começo e o fim (`sk-or-…8469`). Você também pode usar a variável de ambi
 Zero dependências: o servidor usa `http.server` da stdlib. Local por padrão; se
 você expõe na rede (`--all`), ele exige um token gerado na hora.
 
+### 📱 Foi feito para o celular também
+
+A interface é **mobile-first de verdade**: no celular a barra lateral desaparece e
+entram
+
+- **barra de navegação embaixo** com 6 abas (ícone + rótulo), no lugar certo para o polegar
+- **barra de cima** com o logo e o indicador de status da IA
+- **alvos de toque** de 42px+ e campos com fonte 16px (o iOS não dá zoom ao digitar)
+- **modal em tela cheia** para ler a saída das ferramentas
+- **log de auditoria em cartões** (tabela no celular é sofrimento)
+- respeito ao **notch e à barra de gestos** (`safe-area-inset`)
+
+E dá para **instalar como app**: o servidor entrega um `manifest.webmanifest`, então
+no Chrome/Android aparece "Adicionar à tela inicial" — abre em tela cheia, sem barra
+de navegador, com o ícone do emblema. No Termux, rode `termux-wake-lock` antes do
+`nh web` para o Android não matar o processo.
+
 ---
 
 ## 🚀 Uso rápido (CLI)
 
 ```bash
 nh                       # banner + ajuda
+nh doctor                # 🩺 diagnóstico: testa escrita de arquivo e diz o que corrigir
 nh info                  # estado do harness + relatório do dispositivo
-nh tools                 # lista as 29 ferramentas (com risco de cada uma)
+nh tools                 # lista as 46 ferramentas (com risco de cada uma)
 
 nh do clock              # chama uma ferramenta direto, sem LLM
 nh do run_shell --args '{"command": "ls -la ~"}'
+nh do cep --args '{"cep_numero": "01001000"}'
+nh do clima --args '{"cidade": "São Paulo"}'
+nh do port_check --args '{"porta": 8787}'
+nh do zipar --args '{"origem": "~/.shark-harness"}'
 
 nh audit                 # o que o harness executou (log de auditoria)
 ```
+
+> 💡 **Comece pelo `nh doctor`.** Ele testa criação de arquivo de verdade, checa as
+> pastas, a chave da IA, o termux-api e o log — e devolve a dica de correção de cada
+> problema. É a resposta para "não consigo criar arquivo".
 
 ### 🤖 Com o agente (LLM)
 ```bash
@@ -175,15 +201,19 @@ nh serve --selftest    # handshake + tools/list + tools/call, por stdio real
 
 ---
 
-## 🧰 As 29 ferramentas
+## 🧰 As 46 ferramentas
 
 | plugin | ferramentas | risco |
 |---|---|---|
 | **shell** | `run_shell`, `which`, `env_get` | 🟠 exec |
 | **code** | `run_python`, `run_node`, `check_syntax` | 🟠 exec |
-| **files** | `read_file`, `list_dir`, `find_files`, `write_file`, `make_dir`, `delete_path` | 🟢→🔴 |
+| **files** | `read_file`, `list_dir`, `find_files`, `grep_files`, `write_file`, `make_dir`, `delete_path` | 🟢→🔴 |
+| **net** | `http_get`, `http_post`, `baixar_arquivo`, `port_check`, `ip_publico`, `cep`, `clima` | 🟢/🟡 |
+| **archive** | `zipar`, `deszipar`, `sha256`, `tamanho_arquivos` | 🟢/🟡 |
+| **proc** | `processos`, `meus_processos`, `matar_processo` | 🟢/🔴 |
 | **schedule** | `schedule_task`, `list_tasks`, `remove_task`, `pause_task`, `run_task_now`, `explain_cron` | 🟡/🟠 |
 | **device** | `device_notify`, `device_screenshot`, `device_clipboard_ler`, `device_clipboard_escrever`, `device_abrir` | 🟡 |
+| **doctor** | `diagnostico`, `testar_escrita` | 🟢/🟡 |
 | **sysinfo** | `sysinfo_report`, `disk_usage`, `clock` | 🟢 |
 | **meta** | `list_tools`, `tool_help`, `audit_tail` | 🟢 |
 

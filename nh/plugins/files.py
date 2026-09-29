@@ -77,8 +77,22 @@ def write_file(path: str, conteudo: str, append: bool = False) -> str:
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("a" if append else "w", encoding="utf-8") as fh:
             fh.write(conteudo)
+    except PermissionError:
+        return (
+            f"❌ PERMISSÃO NEGADA ao escrever em {p}\n"
+            f"   a pasta {p.parent} não aceita escrita.\n"
+            + ("   No Termux, para gravar em /sdcard rode `termux-setup-storage`.\n"
+               if str(p).startswith(("/sdcard", "/storage")) else "")
+            + "   Alternativa: defina outro destino com  export SHARK_WORKSPACE=$HOME/shark-workspace"
+        )
+    except IsADirectoryError:
+        return f"❌ {p} é uma PASTA — escolha um nome de arquivo."
+    except FileNotFoundError as exc:
+        return f"❌ caminho inválido para {p}: {exc}\n   confira se as pastas-pai existem."
+    except OSError as exc:
+        return f"❌ erro do sistema ao escrever {p}: {exc.strerror or exc} (errno {exc.errno})"
     except Exception as exc:  # noqa: BLE001
-        return f"ERRO escrevendo {p}: {exc}"
+        return f"❌ erro inesperado ao escrever {p}: {type(exc).__name__}: {exc}"
     return f"✅ {'acrescentado em' if append else 'gravado'}: {p} ({len(conteudo)} chars)"
 
 
@@ -173,6 +187,51 @@ def register(reg: Registry) -> None:
     reg.add(read_file, risk="safe", plugin="files")
     reg.add(list_dir, risk="safe", plugin="files")
     reg.add(find_files, risk="safe", plugin="files")
+    reg.add(grep_files, risk="safe", plugin="files")
     reg.add(write_file, risk="write", plugin="files")
     reg.add(make_dir, risk="write", plugin="files")
     reg.add(delete_path, risk="danger", plugin="files")
+
+
+def grep_files(termo: str, path: str = ".", limite: int = 40) -> str:
+    """Procura um texto DENTRO dos arquivos (não só no nome) e mostra as linhas.
+
+    Muito útil para achar onde algo está definido num projeto.
+
+    Args:
+        termo: texto ou trecho a procurar (sem regex, busca literal).
+        path: pasta ou arquivo onde procurar.
+        limite: máximo de linhas de resultado.
+    """
+    base = _abs(path)
+    alvos: list[Path] = []
+    if base.is_file():
+        alvos = [base]
+    elif base.is_dir():
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", "venv", ".venv"}]
+            alvos.extend(Path(root) / f for f in files)
+    else:
+        return f"❌ caminho inválido: {base}"
+
+    achados: list[str] = []
+    lidos = 0
+    for arq in alvos:
+        if len(achados) >= int(limite):
+            break
+        try:
+            if arq.stat().st_size > 3_000_000:  # pula arquivos gigantes/binários óbvios
+                continue
+            texto = arq.read_text(encoding="utf-8", errors="strict")
+        except Exception:  # noqa: BLE001
+            continue
+        lidos += 1
+        for n, linha in enumerate(texto.splitlines(), 1):
+            if termo.lower() in linha.lower():
+                achados.append(f"{arq}:{n}: {linha.strip()[:160]}")
+                if len(achados) >= int(limite):
+                    break
+
+    if not achados:
+        return f"🔍 '{termo}' não encontrado em {base} ({lidos} arquivos de texto lidos)"
+    return (f"🔍 {len(achados)} ocorrência(s) de '{termo}':\n" + "\n".join(achados))

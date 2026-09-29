@@ -43,12 +43,14 @@ MIME = {
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
     ".ico": "image/x-icon",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
 }
 
 # só estes arquivos da pasta webui podem ser servidos (nada de path traversal)
 ESTATICOS = {
     "/", "/index.html", "/style.css", "/app.js",
-    "/logo.jpg", "/logo.png", "/favicon.ico",
+    "/logo.jpg", "/logo.png", "/favicon.ico", "/manifest.webmanifest",
 }
 
 
