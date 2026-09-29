@@ -87,7 +87,7 @@ function renderTools() {
     if (!q) return true;
     return (t.name + " " + t.description + " " + t.plugin).toLowerCase().includes(q);
   });
-  if (!lista.length) { grid.append(el("p", "hint", "nenhuma ferramenta bate com o filtro")); return; }
+  if (!lista.length) { grid.innerHTML = vazio("🔍", "Nada encontrado", "Nenhuma ferramenta bate com esse filtro de risco. Tente limpar a busca."); return; }
   lista.forEach((t) => {
     const r = RISK[t.risk] || RISK.safe;
     const card = el("article", "tool");
@@ -278,7 +278,9 @@ document.addEventListener("click", async (e) => {
 function addMsg(quem, texto, opts) {
   const m = el("div", "msg " + (quem === "user" ? "user" : "bot"));
   const corpo = quem === "user" ? `<p>${esc(texto)}</p>` : md(texto);
-  m.append(el("div", "bubble", `<strong>${quem === "user" ? "você" : "shark"}</strong>${corpo}`));
+  m.append(el("div", "bubble",
+    `<strong>${quem === "user" ? "você" : "shark"}</strong>${corpo}` +
+    `<span class="hora">${hora()}</span>`));
   if (opts && opts.copiar) {
     const b = el("button", "copy mini", "copiar");
     b.dataset.alvo = opts.alvo;
@@ -336,35 +338,95 @@ function resumirTurno(turno, dados) {
   }
 }
 
+/* ícone e rótulo de cada tipo de passo, na linha do tempo */
+const PASSO_ICO = { chamada: "→", resultado: "✓", erro: "✕", info: "i", raciocinio: "✦" };
+
 function addStep(box, tipo, nome, detalhe) {
-  if (tipo === "info") {
-    box.append(el("div", "step", `<div class="sname">${esc(nome)}</div><div class="sarg">${esc(detalhe)}</div>`));
-  } else if (tipo === "chamada") {
-    box.append(el("div", "step", `<div class="sname">→ ${esc(nome)}</div><div class="sarg">${esc(detalhe)}</div>`));
-  } else if (tipo === "resultado") {
-    const s = el("div", "step", `<div class="sname">✓ ${esc(nome)}</div><div class="sarg">clique para ver a saída</div>`);
-    s.append(el("pre", "", esc(detalhe)));
-    s.addEventListener("click", () => s.classList.toggle("open"));
-    box.append(s);
-  } else if (tipo === "erro") {
-    box.append(el("div", "step err", `<div class="sname">erro</div><div class="sarg">${esc(detalhe)}</div>`));
+  const ico = PASSO_ICO[tipo] || "•";
+  let extra = "";
+
+  // mede quanto a ferramenta demorou (do "chamada" até o "resultado")
+  if (tipo === "chamada") box._inicio = Date.now();
+  if (tipo === "resultado" && box._inicio) {
+    extra = `<span class="dur">${((Date.now() - box._inicio) / 1000).toFixed(1)}s</span>`;
+    box._inicio = null;
   }
+
+  const s = el("div", "step s-" + tipo);
+  const dot = el("div", "sdot", ico);
+  const corpo = el("div", "scorpo");
+  const titulo = el("div", "sname");
+  titulo.innerHTML = esc(nome) + extra;
+  corpo.append(titulo);
+
+  if (tipo === "resultado") {
+    corpo.append(el("div", "sarg", "clique para ver a saída"));
+    corpo.append(el("pre", "", esc(detalhe)));
+    s.addEventListener("click", () => s.classList.toggle("open"));
+  } else {
+    corpo.append(el("div", "sarg", esc(detalhe)));
+  }
+
+  s.append(dot, corpo);
+  box.append(s);
   chat.scrollTop = chat.scrollHeight;
 }
 
 /* ───────────────── envio: sessão, parar e repetir ───────────────── */
 let ENVIANDO = null; // AbortController da requisição em andamento
 
+/* hora curta para o rodapé da mensagem */
+function hora() {
+  return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function bolhaResposta(turno, texto) {
   const id = "r" + Math.random().toString(36).slice(2, 9);
   const div = el("div", "bubble");
   div.id = id;
-  div.innerHTML = `<strong>shark</strong>${md(texto)}`;
+  div.innerHTML = `<strong>shark</strong>${md(texto)}<span class="hora">${hora()}</span>`;
   const b = el("button", "copy mini", "copiar");
   b.dataset.alvo = "#" + id;
   div.append(b);
   turno.body.append(div);
   return div;
+}
+
+/* lê um stream SSE e chama aoEvento(nome, dados) a cada evento */
+async function lerSSE(resp, aoEvento) {
+  const leitor = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await leitor.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+    let corte;
+    while ((corte = buffer.indexOf("\n\n")) !== -1) {
+      const bloco = buffer.slice(0, corte);
+      buffer = buffer.slice(corte + 2);
+      let nome = "message";
+      let dados = "";
+      bloco.split("\n").forEach((l) => {
+        if (l.startsWith("event:")) nome = l.slice(6).trim();
+        else if (l.startsWith("data:")) dados += l.slice(5).trim();
+      });
+      if (!dados) continue;
+      try {
+        aoEvento(nome, JSON.parse(dados));
+      } catch (_) { /* evento torto: ignora */ }
+    }
+  }
+}
+
+/* área onde o texto aparece sendo escrito ao vivo */
+function liveBox(turno) {
+  if (!turno.live) {
+    turno.live = el("div", "live");
+    turno.live.append(el("div", "live-txt"), el("i", "cursor"));
+    turno.body.append(turno.live);
+  }
+  return turno.live;
 }
 
 async function enviar(texto, repetir) {
@@ -382,28 +444,60 @@ async function enviar(texto, repetir) {
   const btnParar = $("#btnParar");
   btnEnviar.disabled = true;
   btnParar.style.display = "";
+  let tokens = null;
+  let respostaFinal = "";
+
+  const aoPasso = (p) => {
+    // quando uma ferramenta vai rodar, o texto já escrito era raciocínio
+    if (p.tipo === "chamada" && turno.live) {
+      const t = turno.live.querySelector(".live-txt").textContent.trim();
+      turno.live.remove();
+      turno.live = null;
+      if (t) addStep(turno.steps, "raciocinio", "raciocínio", t);
+    }
+    if (p.tipo === "resposta") return;
+    if (p.tipo === "tokens") {
+      try { tokens = JSON.parse(p.detalhe); } catch (_) { tokens = null; }
+      return;
+    }
+    if (sp.parentNode) sp.remove();
+    addStep(turno.steps, p.tipo, p.nome, p.detalhe);
+    chat.scrollTop = chat.scrollHeight;
+  };
 
   try {
-    const r = await api("/api/agent", {
+    const resp = await fetch("/api/agente/stream", {
       method: "POST",
-      body: { prompt: limpo, sessao: SESSAO_ATUAL ? SESSAO_ATUAL.id : "" },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: limpo, sessao: SESSAO_ATUAL ? SESSAO_ATUAL.id : "" }),
       signal: ENVIANDO.signal,
     });
-    sp.remove();
-    let tokens = null;
-    (r.steps || []).forEach((s) => {
-      if (s.tipo === "resposta") return;
-      if (s.tipo === "tokens") {
-        try { tokens = JSON.parse(s.detalhe); } catch (_) { tokens = null; }
-        return;
+    if (!resp.ok) throw new Error("o servidor respondeu HTTP " + resp.status);
+
+    await lerSSE(resp, (nome, dados) => {
+      if (nome === "passo") aoPasso(dados);
+      else if (nome === "delta") {
+        if (sp.parentNode) sp.remove();
+        const box = liveBox(turno);
+        box.querySelector(".live-txt").textContent += dados.texto || "";
+        chat.scrollTop = chat.scrollHeight;
+      } else if (nome === "erro") {
+        if (sp.parentNode) sp.remove();
+        addStep(turno.steps, "erro", "erro", dados.mensagem || "erro");
+      } else if (nome === "fim") {
+        respostaFinal = dados.answer || "";
+        if (dados.sessao) SESSAO_ATUAL = { ...(SESSAO_ATUAL || {}), ...dados.sessao };
       }
-      addStep(turno.steps, s.tipo, s.nome, s.detalhe);
     });
-    bolhaResposta(turno, r.answer || "(sem resposta)");
+
+    if (sp.parentNode) sp.remove();
+    if (turno.live) turno.live.remove();
+    bolhaResposta(turno, respostaFinal || "(sem resposta)");
     resumirTurno(turno, tokens);
-    if (SESSAO_ATUAL) carregarSessoes(); // atualiza a contagem de mensagens
+    if (SESSAO_ATUAL) carregarSessoes();
   } catch (err) {
-    sp.remove();
+    if (sp.parentNode) sp.remove();
+    if (turno.live) turno.live.remove();
     const parou = err && err.name === "AbortError";
     addStep(turno.steps, "erro", parou ? "cancelado" : "rede",
             parou ? "você parou a execução." : String(err));
@@ -464,7 +558,7 @@ ta.addEventListener("input", () => {
 function renderJobs() {
   const wrap = $("#jobList");
   wrap.innerHTML = "";
-  if (!STATE.jobs.length) { wrap.append(el("p", "hint", "nenhuma tarefa agendada ainda")); return; }
+  if (!STATE.jobs.length) { wrap.innerHTML = vazio("⏰", "Nada agendado", "Aqui aparecem as tarefas que rodam sozinhas. Peça ao agente algo como 'agenda um job a cada 30 min pra checar o disco'."); return; }
   STATE.jobs.forEach((j) => {
     const card = el("article", "job" + (j.enabled ? "" : " off"));
     card.innerHTML = `
@@ -832,19 +926,21 @@ $("#toolsSeg").addEventListener("click", (e) => {
   if (b.dataset.seg === "loja" || b.dataset.seg === "plugins") carregarLoja();
 });
 
-/* aviso flutuante */
-let toastTimer = null;
-function toast(msg) {
-  let t = $("#toast");
-  if (!t) {
-    t = el("div", "toast", "");
-    t.id = "toast";
-    document.body.append(t);
-  }
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 5200);
+/* aviso flutuante: empilha, com ícone, cor e barra de tempo */
+function toast(msg, tipo) {
+  const caixa = $("#toasts");
+  const texto = String(msg ?? "");
+  const cls = tipo || (/^(❌|erro|não|nao)/i.test(texto) ? "err" : /^✅/.test(texto) ? "ok" : "");
+  const ico = cls === "err" ? "✕" : cls === "ok" ? "✓" : "•";
+  const t = el("div", "toast " + cls);
+  t.innerHTML = `<span class="tico">${ico}</span><span>${esc(texto)}</span><i class="barra"></i>`;
+  caixa.append(t);
+  // só os últimos 3 ficam na tela
+  while (caixa.children.length > 3) caixa.firstChild.remove();
+  setTimeout(() => {
+    t.classList.add("saindo");
+    setTimeout(() => t.remove(), 220);
+  }, 4500);
 }
 
 /* mostrar/esconder raciocínio em todas as conversas */
@@ -1255,6 +1351,83 @@ $("#modelSalvar").addEventListener("click", async () => {
   await loadState();
   setTimeout(() => $("#modelModal").classList.remove("show"), 900);
 });
+
+/* ═══════════════════════ detalhes de usabilidade ═══════════════════════ */
+/* o campo cresce conforme você escreve (até 6 linhas) e volta ao normal */
+(function campoCresce() {
+  const ta = $("#prompt");
+  const ajustar = () => {
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 132) + "px";
+  };
+  ta.addEventListener("input", ajustar);
+  ta.addEventListener("blur", () => {
+    if (!ta.value.trim()) ta.style.height = "auto";
+  });
+})();
+
+/* Esc fecha qualquer modal aberto */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".modal.show").forEach((m) => m.classList.remove("show"));
+});
+
+/* atalho: Ctrl/Cmd + K foca o campo de digitar */
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    irPara("chat");
+    $("#prompt").focus();
+  }
+});
+
+/* estado vazio reutilizável */
+function vazio(icone, titulo, texto) {
+  return `<div class="vazio"><div class="vazio-ico">${icone}</div>` +
+         `<strong>${esc(titulo)}</strong><p>${esc(texto)}</p></div>`;
+}
+
+/* rótulos de acessibilidade nas abas */
+[...document.querySelectorAll("#tabbar .tab")].forEach((t) => {
+  t.setAttribute("role", "tab");
+  t.setAttribute("aria-label", t.querySelector("span").textContent);
+});
+
+/* ═══════════════════════ teste de saúde ═══════════════════════ */
+const SAUDE_ICO = { ok: "✓", aviso: "!", erro: "✕" };
+
+async function testarTudo() {
+  const btn = $("#btnSaude");
+  const lista = $("#saudeLista");
+  const resumo = $("#saudeResumo");
+  btn.disabled = true;
+  btn.textContent = "testando…";
+  resumo.textContent = "";
+  resumo.className = "status";
+  lista.innerHTML = '<div class="esqueleto"></div><div class="esqueleto"></div><div class="esqueleto"></div>';
+  try {
+    const d = await api("/api/saude");
+    lista.innerHTML = "";
+    (d.itens || []).forEach((i) => {
+      const el2 = el("div", "saude-item s-" + i.estado);
+      el2.innerHTML =
+        `<div class="sdot">${SAUDE_ICO[i.estado] || "•"}</div>` +
+        `<div class="scorpo"><div class="sname">${esc(i.nome)}</div>` +
+        `<div class="sarg">${esc(i.detalhe)}</div>` +
+        (i.dica ? `<div class="sarg dica">💡 ${esc(i.dica)}</div>` : "") + `</div>`;
+      lista.append(el2);
+    });
+    resumo.textContent = d.resumo;
+    resumo.className = "status " + (d.erros ? "err" : d.avisos ? "" : "ok");
+  } catch (e) {
+    lista.innerHTML = "";
+    resumo.className = "status err";
+    resumo.textContent = "não consegui rodar o teste: " + e;
+  }
+  btn.disabled = false;
+  btn.textContent = "Testar tudo";
+}
+$("#btnSaude").addEventListener("click", testarTudo);
 
 /* ───────────────── init ───────────────── */
 loadState();

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import secrets
 import threading
 import urllib.error
@@ -139,6 +140,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
             return self._json(self._sessoes())
+        if rota == "/api/saude":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            return self._json(self._saude())
         if rota == "/api/fs":
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
@@ -161,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"result": self._cron(body)})
         if rota == "/api/agent":
             return self._json(self._agente(body.get("prompt", ""), str(body.get("sessao") or "")))
+        if rota == "/api/agente/stream":
+            return self._agente_stream(body)
         if rota == "/api/config":
             return self._json(self._salvar_config(body))
         if rota == "/api/plugins":
@@ -204,6 +211,123 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     # ------------------------------------------------------------------ loja ---
+    def _saude(self) -> dict:
+        """Checagem de saúde: responde 'o que pode estar quebrado?' de uma vez.
+
+        Não gasta token: a parte do provedor só testa se o endereço responde
+        (conexão TCP). Quem quiser gastar de verdade usa o "Testar conexão".
+        """
+        import shutil
+        import socket
+        from urllib.parse import urlparse as _urlparse
+
+        from .paths import HOME, has_cmd
+
+        itens: list[dict] = []
+
+        def item(nome: str, estado: str, detalhe: str, dica: str = "") -> None:
+            itens.append({"nome": nome, "estado": estado, "detalhe": detalhe, "dica": dica})
+
+        # 1. grava e lê um arquivo de verdade (o teste que mais pega problema)
+        try:
+            alvo = workspace() / ".shark-teste-escrita"
+            alvo.write_text("ok", encoding="utf-8")
+            lido = alvo.read_text(encoding="utf-8")
+            alvo.unlink()
+            if lido == "ok":
+                item("Escrita de arquivo", "ok", f"grava e lê em {workspace()}")
+            else:
+                item("Escrita de arquivo", "aviso", "escreveu mas leu diferente")
+        except Exception as exc:  # noqa: BLE001
+            item("Escrita de arquivo", "erro", f"{type(exc).__name__}: {exc}",
+                 "no Termux, rode 'termux-setup-storage' e confira se a pasta existe")
+
+        # 2. espaço em disco
+        try:
+            uso = shutil.disk_usage(str(HOME))
+            livre = uso.free / (1024 ** 3)
+            pct = 100 * uso.used / uso.total
+            if livre < 0.3:
+                item("Espaço em disco", "erro", f"só {livre:.2f} GB livres ({pct:.0f}% usado)")
+            elif livre < 1.5:
+                item("Espaço em disco", "aviso", f"{livre:.1f} GB livres ({pct:.0f}% usado)")
+            else:
+                item("Espaço em disco", "ok", f"{livre:.1f} GB livres ({pct:.0f}% usado)")
+        except Exception as exc:  # noqa: BLE001
+            item("Espaço em disco", "aviso", str(exc))
+
+        # 3. provedor de IA configurado
+        url = env("LLM_URL", agent.DEFAULT_URL)
+        modelo = env("LLM_MODEL", "")
+        chave = env("LLM_KEY", "")
+        if not url:
+            item("Provedor de IA", "erro", "nenhum endereço configurado",
+                 "escolha um provedor em Ajustes → Provedor de IA")
+        else:
+            host = _urlparse(url).hostname or ""
+            local = host in ("localhost", "127.0.0.1")
+            if not chave and not local:
+                item("Provedor de IA", "aviso", f"{host} — sem chave configurada",
+                     "cole a chave em Ajustes; sem ela o agente não roda")
+            else:
+                item("Provedor de IA", "ok", f"{host} · modelo {modelo or '(padrão)'}")
+
+        # 4. o provedor responde? (só conexão, sem gastar token)
+        if url:
+            host = _urlparse(url).hostname or ""
+            porta = _urlparse(url).port or (443 if url.startswith("https") else 80)
+            if host:
+                try:
+                    with socket.create_connection((host, porta), timeout=6):
+                        pass
+                    item("Conexão com o provedor", "ok", f"{host}:{porta} respondeu")
+                except Exception as exc:  # noqa: BLE001
+                    item("Conexão com o provedor", "erro",
+                         f"não consegui falar com {host}:{porta} ({type(exc).__name__})",
+                         "confira a internet; no celular, teste abrir o site no navegador")
+
+        # 5. git (as sessões aproveitam)
+        if has_cmd("git"):
+            item("Git", "ok", "instalado")
+        else:
+            item("Git", "aviso", "não encontrado", "instale com: pkg install git")
+
+        # 6. plugins carregados
+        try:
+            total = len(self.reg.names())
+            if total == 0:
+                item("Ferramentas", "erro", "nenhuma ferramenta carregada")
+            else:
+                item("Ferramentas", "ok", f"{total} disponíveis · risco máx {self.max_risk}")
+        except Exception as exc:  # noqa: BLE001
+            item("Ferramentas", "aviso", str(exc))
+
+        # 7. permissão do arquivo de config (tem chave dentro)
+        try:
+            if CONFIG_FILE.is_file():
+                modo = CONFIG_FILE.stat().st_mode & 0o777
+                if modo & 0o077:
+                    item("Permissão da config", "aviso", f"modo {oct(modo)[2:]} (legível por outros)",
+                         "o arquivo guarda a chave; o ideal é 600")
+                else:
+                    item("Permissão da config", "ok", f"modo {oct(modo)[2:]} (só o dono lê)")
+            else:
+                item("Permissão da config", "aviso", "ainda sem arquivo de config",
+                     "configure um provedor para criar")
+        except Exception as exc:  # noqa: BLE001
+            item("Permissão da config", "aviso", str(exc))
+
+        ruins = [i for i in itens if i["estado"] == "erro"]
+        alertas = [i for i in itens if i["estado"] == "aviso"]
+        if ruins:
+            resumo = f"{len(ruins)} problema(s) para resolver"
+        elif alertas:
+            resumo = f"tudo essencial funcionando · {len(alertas)} aviso(s)"
+        else:
+            resumo = "tudo funcionando"
+        return {"itens": itens, "resumo": resumo,
+                "erros": len(ruins), "avisos": len(alertas)}
+
     def _sessoes(self) -> dict:
         """Lista as sessões (pastas de projeto) e o atalho do home do usuário."""
         from . import sessions
@@ -522,7 +646,59 @@ class Handler(BaseHTTPRequestHandler):
         return f"ação desconhecida: {act}"
 
     # ------------------------------------------------------------------ agente
-    def _agente(self, prompt: str, sessao_id: str = "") -> dict:
+    def _sse(self, evento: str, dados: dict) -> None:
+        """Escreve um evento SSE e manda na hora (o cliente vê ao vivo)."""
+        texto = f"event: {evento}\ndata: {json.dumps(dados, ensure_ascii=False)}\n\n"
+        self.wfile.write(texto.encode("utf-8"))
+        self.wfile.flush()
+
+    def _agente_stream(self, body: dict) -> None:
+        """Igual ao /api/agent, mas transmite os passos e o texto AO VIVO (SSE).
+
+        O agente roda numa thread e joga os eventos numa fila; esta thread só
+        fica drenando a fila e escrevendo no socket. Assim o usuário vê cada
+        ferramenta sendo chamada e a resposta sendo escrita, em vez de encarar
+        um spinner por um minuto.
+        """
+        prompt = str(body.get("prompt") or "")
+        sessao_id = str(body.get("sessao") or "")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        fila: queue.Queue = queue.Queue()
+        resultado: dict = {}
+
+        def ao_vivo(evento: str, dados: dict) -> None:
+            fila.put((evento, dados))
+
+        def trabalhar() -> None:
+            try:
+                resultado.update(self._agente(prompt, sessao_id, ao_vivo=ao_vivo))
+            except Exception as exc:  # noqa: BLE001
+                ao_vivo("erro", {"mensagem": f"{type(exc).__name__}: {exc}"})
+            finally:
+                fila.put((None, None))
+
+        threading.Thread(target=trabalhar, daemon=True).start()
+
+        while True:
+            evento, dados = fila.get()
+            if evento is None:
+                break
+            try:
+                self._sse(evento, dados)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return  # aba fechada / parou: o agente segue, mas ninguém escuta
+        try:
+            self._sse("fim", resultado)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
+    def _agente(self, prompt: str, sessao_id: str = "", ao_vivo=None) -> dict:
         """Roda o agente. Com `sessao_id`, trabalha na pasta daquela sessão."""
         if not prompt.strip():
             return {"answer": "pedido vazio", "steps": []}
@@ -532,6 +708,12 @@ class Handler(BaseHTTPRequestHandler):
         def on_step(tipo: str, nome: str, detalhe: str) -> None:
             with lock:
                 passos.append({"tipo": tipo, "nome": nome, "detalhe": (detalhe or "")[:4000]})
+            if ao_vivo is not None:
+                ao_vivo("passo", {"tipo": tipo, "nome": nome, "detalhe": (detalhe or "")[:4000]})
+
+        def on_texto(pedaco: str) -> None:
+            if ao_vivo is not None:
+                ao_vivo("delta", {"texto": pedaco})
 
         pasta, historico, sessao = "", None, None
         if sessao_id:
@@ -556,6 +738,7 @@ class Handler(BaseHTTPRequestHandler):
             on_step=on_step,
             history=historico,
             pasta=pasta,
+            on_texto=on_texto if ao_vivo is not None else None,
         )
 
         if sessao is not None:

@@ -77,6 +77,91 @@ def _post(url: str, payload: dict, api_key: str = "", timeout: int = 180) -> dic
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _post_stream(url: str, payload: dict, api_key: str = "", timeout: int = 180,
+                 on_delta=None) -> dict:
+    """Chama o provedor com `stream: true` e vai entregando o texto conforme sai.
+
+    Chama `on_delta(pedaço)` a cada pedaço de texto para a interface mostrar a
+    resposta sendo escrita ao vivo. No fim devolve o MESMO formato da chamada
+    normal (choices + usage), remontando os `tool_calls`, que no stream chegam
+    fatiados em vários eventos.
+    """
+    corpo = dict(payload)
+    corpo["stream"] = True
+    if "openrouter" in (url or "").lower():
+        corpo["usage"] = {"include": True}  # senão o provedor não manda o consumo
+
+    data = json.dumps(corpo).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "User-Agent": USER_AGENT,
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+    pedacos: list[str] = []
+    chamadas: dict = {}
+    uso: dict = {}
+    modelo = str(corpo.get("model") or "")
+    erro = None
+
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for bruto in resp:
+            linha = bruto.decode("utf-8", "replace").strip()
+            if not linha or linha.startswith(":") or not linha.startswith("data:"):
+                continue
+            dado = linha[5:].strip()
+            if dado == "[DONE]":
+                break
+            try:
+                obj = json.loads(dado)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("error"):
+                erro = obj["error"]
+                continue
+            if obj.get("usage"):
+                uso = obj["usage"]
+            if obj.get("model"):
+                modelo = str(obj["model"])
+            for esc in obj.get("choices") or []:
+                delta = esc.get("delta") or esc.get("message") or {}
+                texto = delta.get("content")
+                if texto:
+                    pedacos.append(texto)
+                    if on_delta is not None:
+                        try:
+                            on_delta(texto)
+                        except Exception:  # noqa: BLE001 — o front caiu? segue o jogo
+                            pass
+                for tc in delta.get("tool_calls") or []:
+                    i = tc.get("index")
+                    if i is None:
+                        i = len(chamadas)
+                    slot = chamadas.setdefault(
+                        i, {"id": "", "type": "function",
+                            "function": {"name": "", "arguments": ""}})
+                    if tc.get("id"):
+                        slot["id"] = tc["id"]
+                    fn = tc.get("function") or {}
+                    if fn.get("name"):
+                        slot["function"]["name"] += fn["name"]
+                    if fn.get("arguments"):
+                        slot["function"]["arguments"] += fn["arguments"]
+
+    mensagem: dict = {"role": "assistant", "content": "".join(pedacos) or None}
+    if chamadas:
+        mensagem["tool_calls"] = [chamadas[i] for i in sorted(chamadas)]
+    saida: dict = {"model": modelo, "choices": [{"message": mensagem}]}
+    if uso:
+        saida["usage"] = uso
+    if erro:
+        saida["error"] = erro
+    return saida
+
+
 def _erro_do_provedor(resp: dict) -> str:
     """Extrai uma mensagem LEGÍVEL de uma resposta de erro do provedor.
 
@@ -120,11 +205,13 @@ def _modelos_de_reserva(modelo: str, url: str) -> list[str]:
 
 
 def _chamar_llm(url: str, payload: dict, api_key: str, modelos: list[str], *,
-                tentativas: int = 2, pausa: float = 1.6) -> tuple[dict | None, str, str, str]:
+                tentativas: int = 2, pausa: float = 1.6, on_delta=None
+                ) -> tuple[dict | None, str, str, str]:
     """Chama o modelo tentando de novo e caindo para os reservas.
 
     Devolve (resposta, modelo_que_respondeu, erro_legivel, dica). Resposta None
-    significa que nenhum modelo respondeu.
+    significa que nenhum modelo respondeu. Com `on_delta`, usa streaming e vai
+    entregando o texto ao vivo (a interface mostra a resposta sendo escrita).
     """
     erros: list[str] = []
     dica = ""
@@ -132,7 +219,10 @@ def _chamar_llm(url: str, payload: dict, api_key: str, modelos: list[str], *,
         payload["model"] = modelo
         for tentativa in range(1, tentativas + 1):
             try:
-                resp = _post(url, payload, api_key)
+                if on_delta is not None:
+                    resp = _post_stream(url, payload, api_key, on_delta=on_delta)
+                else:
+                    resp = _post(url, payload, api_key)
             except urllib.error.HTTPError as exc:
                 corpo = exc.read().decode("utf-8", "replace")[:300]
                 erros.append(f"{modelo}: HTTP {exc.code} — {corpo.strip()[:140]}")
@@ -188,6 +278,7 @@ def run_agent(
     history: list | None = None,
     on_step=None,
     pasta: str = "",
+    on_texto=None,
 ) -> str:
     """Roda o agente: manda o pedido ao LLM e executa as ferramentas que ele escolher.
 
@@ -200,7 +291,10 @@ def run_agent(
 
     `on_step(tipo, nome, detalhe)` é chamado a cada evento — usado pela interface
     web para mostrar os passos ao vivo. Tipos: 'chamada', 'resultado', 'resposta',
-    'erro', 'info'.
+    'info', 'tokens', 'erro'.
+
+    `on_texto(pedaço)` recebe o texto da resposta conforme o modelo escreve
+    (streaming). Sem ele, a chamada é feita sem stream.
     """
     reg = reg or load_plugins()
     url = url or env("LLM_URL", DEFAULT_URL)
@@ -296,7 +390,8 @@ def run_agent(
             payload["tool_choice"] = "none"
         try:
             resp, modelo_usado, erro_llm, dica = _chamar_llm(
-                url, payload, api_key, [model] + _modelos_de_reserva(model, url)
+                url, payload, api_key, [model] + _modelos_de_reserva(model, url),
+                on_delta=on_texto,
             )
         except Exception as exc:  # noqa: BLE001 — blindagem: nada derruba o loop
             resp, modelo_usado, erro_llm, dica = None, model, f"{type(exc).__name__}: {exc}", ""

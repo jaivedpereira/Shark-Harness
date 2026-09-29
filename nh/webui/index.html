@@ -291,6 +291,19 @@
       </div>
 
       <div class="card">
+        <h3>Teste de saúde</h3>
+        <p class="mdesc">Confere de uma vez o que costuma quebrar: escrita de arquivo, espaço,
+        provedor de IA e internet. <strong>Não gasta token.</strong></p>
+        <div class="row between">
+          <span class="status" id="saudeResumo"></span>
+          <div class="row-actions">
+            <button class="primary" id="btnSaude" type="button">Testar tudo</button>
+          </div>
+        </div>
+        <div class="saude" id="saudeLista"></div>
+      </div>
+
+      <div class="card">
         <h3>Aparência</h3>
         <div class="row">
           <label>Tamanho dos itens da barra de baixo
@@ -362,6 +375,9 @@
     <span>Ajustes</span>
   </button>
 </nav>
+
+<!-- avisos flutuantes (empilham) -->
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
 <!-- ══════════ modal de escolher sessão ══════════ -->
 <div class="modal" id="sesModal">

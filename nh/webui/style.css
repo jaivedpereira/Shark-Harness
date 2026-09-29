@@ -775,3 +775,209 @@ body::before{
   .fs-lista{max-height:38vh}
   .codeblk pre,.bubble code{font-size:11.5px}
 }
+
+/* ══════════════════════════════════════════════════════════════
+   LINHA DO TEMPO DOS PASSOS — cada passo é um ponto ligado ao próximo
+   ══════════════════════════════════════════════════════════════ */
+.steps{display:flex;flex-direction:column;gap:0}
+.step{
+  display:flex;gap:11px;padding:0 0 10px;position:relative;
+  cursor:default;border:0;background:none;
+}
+.step:last-child{padding-bottom:2px}
+/* o fio que liga um ponto ao outro */
+.step:not(:last-child)::before{
+  content:"";position:absolute;left:11px;top:23px;bottom:0;width:1px;
+  background:var(--line);z-index:0;
+}
+.sdot{
+  flex:none;width:23px;height:23px;border-radius:50%;z-index:1;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;line-height:1;
+  background:var(--panel2);border:1px solid var(--line);color:var(--muted);
+}
+.scorpo{flex:1;min-width:0;padding-top:2px}
+.sname{
+  display:flex;align-items:baseline;gap:8px;
+  font-size:12.5px;font-weight:600;color:var(--text);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.sarg{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px;word-break:break-word}
+.dur{
+  font-size:10px;font-weight:500;color:var(--muted);opacity:.75;
+  font-family:inherit;font-variant-numeric:tabular-nums;
+}
+/* cores por tipo */
+.s-chamada .sdot{background:rgba(77,148,255,.14);border-color:rgba(77,148,255,.4);color:#8dbcff}
+.s-resultado .sdot{background:rgba(63,185,80,.14);border-color:rgba(63,185,80,.4);color:#56d364}
+.s-erro .sdot{background:rgba(248,81,73,.14);border-color:rgba(248,81,73,.4);color:#ff8b84}
+.s-raciocinio .sdot{background:rgba(163,113,247,.14);border-color:rgba(163,113,247,.38);color:#c4a5ff}
+.s-raciocinio .sarg{font-style:italic;opacity:.9;white-space:pre-wrap}
+.s-erro .sname{color:#ff8b84}
+.s-info .sdot{font-style:italic}
+.s-resultado{cursor:pointer}
+.s-resultado .sarg{color:var(--accent);opacity:.85}
+.step pre{
+  display:none;margin:8px 0 0;padding:10px 11px;max-height:320px;overflow:auto;
+  background:rgba(0,0,0,.5);border:1px solid var(--vidro-borda);border-radius:10px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.5;
+  white-space:pre-wrap;word-break:break-word;color:#c9d3e0;
+}
+.step.open pre{display:block}
+.step:hover .sdot{filter:brightness(1.25)}
+
+/* spinner discreto */
+.spinner{display:flex;gap:5px;padding:6px 0 4px 5px}
+.spinner i{
+  width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.5;
+  animation:pulo 1.2s ease-in-out infinite;
+}
+.spinner i:nth-child(2){animation-delay:.18s}
+.spinner i:nth-child(3){animation-delay:.36s}
+@keyframes pulo{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+
+/* ─────────── texto chegando AO VIVO (streaming) ─────────── */
+.live{margin:8px 0 2px}
+.live-txt{white-space:pre-wrap;font-size:13.5px;line-height:1.62;color:var(--text)}
+.cursor{
+  display:inline-block;width:7px;height:14px;margin-left:3px;vertical-align:-2px;
+  background:var(--accent);border-radius:1.5px;animation:pisca 1.05s step-end infinite;
+}
+@keyframes pisca{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ══════════════════════════════════════════════════════════════
+   ACABAMENTO: foco, toque, avisos, estados vazios, carcaça
+   ══════════════════════════════════════════════════════════════ */
+/* foco visível de verdade (teclado) sem poluir o mouse */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+button:focus:not(:focus-visible){outline:none}
+
+/* retorno de toque nos botões */
+button{transition:background .15s,border-color .15s,color .15s,transform .08s,opacity .15s}
+button:active:not(:disabled){transform:scale(.975)}
+button:disabled{opacity:.5;cursor:not-allowed}
+
+/* carcaça: nada de "flash" branco ao tocar no celular */
+*{-webkit-tap-highlight-color:transparent}
+.chat{overscroll-behavior:contain;scroll-behavior:smooth}
+
+/* hora da mensagem */
+.hora{
+  display:block;margin-top:6px;font-size:10px;color:var(--muted);opacity:.6;
+  font-variant-numeric:tabular-nums;
+}
+
+/* estado vazio bonito */
+.vazio{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  padding:38px 22px;text-align:center;color:var(--muted);
+}
+.vazio-ico{
+  width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);font-size:20px;
+}
+.vazio strong{color:var(--text);font-size:14px}
+.vazio p{font-size:12.5px;line-height:1.6;max-width:330px}
+
+/* avisos empilhados com barra de tempo */
+.toasts{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;
+  pointer-events:none;width:min(420px,calc(100vw - 24px));
+}
+.toast{
+  position:relative;overflow:hidden;pointer-events:auto;
+  background:var(--vidro-forte);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid var(--vidro-borda);border-radius:14px;
+  padding:11px 15px;font-size:12.5px;line-height:1.45;color:var(--text);
+  box-shadow:0 10px 34px rgba(0,0,0,.6);
+  display:flex;align-items:center;gap:10px;
+  animation:sobe .22s ease-out;
+}
+.toast.saindo{animation:desce .2s ease-in forwards}
+.toast .barra{
+  position:absolute;left:0;bottom:0;height:2px;background:var(--accent);opacity:.7;
+  animation:encolhe 4.5s linear forwards;
+}
+.toast.ok{border-color:rgba(63,185,80,.4)}
+.toast.ok .barra{background:var(--ok)}
+.toast.err{border-color:rgba(248,81,73,.45)}
+.toast.err .barra{background:var(--danger)}
+@keyframes sobe{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes desce{to{opacity:0;transform:translateY(8px)}}
+@keyframes encolhe{from{width:100%}to{width:0}}
+@media(max-width:900px){
+  .toasts{bottom:calc(158px + env(safe-area-inset-bottom,0px))}
+}
+
+/* esqueleto de carregamento */
+.esqueleto{
+  height:52px;border-radius:var(--r);margin-bottom:10px;
+  background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.07),rgba(255,255,255,.03));
+  background-size:200% 100%;animation:brilha 1.5s linear infinite;
+}
+@keyframes brilha{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* barra de baixo: a aba ativa vira uma pílula */
+.tab{position:relative;border-radius:16px;transition:background .18s,color .18s}
+.tab.active{background:rgba(77,148,255,.13);color:var(--accent)}
+.tab.active::after{display:none}
+.tab:active{background:rgba(255,255,255,.05)}
+
+/* cabeçalho do turno mais legível */
+.turn-head{
+  border:1px solid var(--vidro-borda);border-radius:12px;
+  padding:8px 12px;background:rgba(255,255,255,.025);
+}
+.turn-head:hover{background:rgba(255,255,255,.05)}
+
+/* respeito a quem não quer animação */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;scroll-behavior:auto !important}
+}
+
+/* ─────────── teste de saúde (reaproveita a linha do tempo) ─────────── */
+.saude{display:flex;flex-direction:column;gap:0;margin-top:14px}
+.saude-item{display:flex;gap:11px;padding:0 0 11px;position:relative}
+.saude-item:last-child{padding-bottom:0}
+.saude-item:not(:last-child)::before{
+  content:"";position:absolute;left:11px;top:23px;bottom:0;width:1px;background:var(--line);
+}
+.s-ok .sdot{background:rgba(63,185,80,.14);border-color:rgba(63,185,80,.4);color:#56d364}
+.s-aviso .sdot{background:rgba(210,153,34,.15);border-color:rgba(210,153,34,.45);color:#e3b341}
+.saude-item .dica{color:var(--accent);opacity:.9;font-style:italic}
+
+/* aviso: ícone com cor */
+.tico{flex:none;font-weight:700;font-size:12px;opacity:.9}
+.toast.err .tico{color:var(--danger)}
+.toast.ok .tico{color:var(--ok)}
+
+/* campo de digitar que cresce */
+#prompt{resize:none;overflow-y:auto;max-height:132px;transition:height .08s ease-out}
+
+/* rolagem mais discreta */
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#26262b;border-radius:5px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:#3a3a42;background-clip:content-box}
+
+/* h2 com subtítulo mais claro */
+.vhead h2{letter-spacing:-.3px}
+.vhead p{max-width:62ch}
+
+/* ══════════════════════════════════════════════════════════════
+   LEGIBILIDADE NO DESKTOP — sem campos esticados e ação sempre à vista
+   ══════════════════════════════════════════════════════════════ */
+@media(min-width:901px){
+  /* telas de conteúdo não precisam ocupar 1600px: linha longa cansa a leitura */
+  .view:not(#view-chat){max-width:940px}
+  /* a linha de ação do cartão (salvar/testar) acompanha a rolagem */
+  .card > .row.between{
+    position:sticky;bottom:-2px;z-index:5;
+    background:linear-gradient(to top,var(--panel) 72%,transparent);
+    padding:12px 0 4px;margin-top:10px;
+  }
+}
+/* nome do modelo na barra lateral: corta mas tem o nome inteiro no title */
+.side-foot .llm{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
