@@ -4,6 +4,7 @@ Estas são as ferramentas que mais destravam o agente: com elas ele consulta API
 reais (preço, clima, CEP, cotação), baixa conteúdo e verifica se teu servidor caiu.
 """
 
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,19 @@ from ..guard import check_path
 
 UA = "Mozilla/5.0 (compatible; SharkHarness/0.1)"  # vários provedores recusam UA de urllib
 MAX_TEXTO = 8000
+
+MANIFEST = {
+    "id": "net",
+    "nome": "Internet e APIs",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "rede",
+    "descricao": "Consultar APIs, baixar arquivo, testar se um serviço está no ar, IP, CEP e clima.",
+    "risco_max": "write",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["http", "api", "download", "cep", "clima"],
+}
 
 
 def _requisicao(url: str, *, dados: bytes | None = None, timeout: int = 30,

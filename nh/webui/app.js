@@ -40,8 +40,10 @@ async function loadState() {
   const mdot = $("#mDot");
   if (mdot) mdot.className = "dot " + (llm.configured ? "ok" : "err");
   // nome curto do modelo para não quebrar linha na barra lateral
-  const curto = String(llm.model || "").split("/").pop().replace(/:free$/, "").slice(0, 20);
+  const bruto = String(llm.model || "").split("/").pop().replace(/:free$/, "");
+  const curto = bruto.length > 18 ? bruto.slice(0, 17) + "…" : bruto;
   $("#llmText").textContent = llm.configured ? `IA ligada · ${curto}` : "IA desligada";
+  $("#llmLine").title = llm.model || "";
   $("#llmText").title = llm.configured ? llm.model : "abra Configurações para colar a chave";
 
   renderTools();
@@ -64,6 +66,7 @@ function irPara(view) {
   window.scrollTo(0, 0);
 
   if (view === "config") carregarConfig();
+  else if (view === "tools") carregarLoja();
   else if (view === "audit" || view === "cron") loadState();
 }
 
@@ -168,6 +171,24 @@ $("#mRun").addEventListener("click", async () => {
 /* ───────────────── agente ───────────────── */
 const chat = $("#chat");
 
+/* preferências de exibição (ficam no navegador) */
+const PREF = {
+  get ocultar() {
+    return localStorage.getItem("nh_ocultar_passos");
+  },
+  set ocultar(v) {
+    localStorage.setItem("nh_ocultar_passos", v ? "1" : "0");
+  },
+  // padrão: mostra o raciocínio; esconde só se o usuário pediu
+  get escondido() {
+    return localStorage.getItem("nh_ocultar_passos") === "1";
+  },
+};
+
+function fmtNum(n) {
+  return n >= 1000 ? (n / 1000).toFixed(1).replace(".", ",") + "k" : String(n);
+}
+
 function addMsg(quem, texto) {
   const m = el("div", "msg " + (quem === "user" ? "user" : "bot"));
   m.append(el("div", "bubble", `<strong>${quem === "user" ? "você" : "shark"}</strong><p>${esc(texto)}</p>`));
@@ -175,12 +196,54 @@ function addMsg(quem, texto) {
   chat.scrollTop = chat.scrollHeight;
   return m;
 }
-function addSteps() {
-  const box = el("div", "steps");
-  chat.append(box);
+
+/* Um "turno" = cabeçalho (resumo + botão) + passos + resposta.
+   Assim os passos podem ser escondidos sem perder a resposta. */
+function addTurn() {
+  const t = el("div", "turn" + (PREF.escondido ? " closed" : ""));
+  const head = el("div", "turn-head");
+  const btn = el("button", "turn-toggle");
+  btn.innerHTML = '<span class="chev"></span><span class="ttxt">pensando…</span>';
+  head.append(btn);
+  const steps = el("div", "steps");
+  const meta = el("div", "turn-meta");
+  const body = el("div", "turn-body");
+  t.append(head, steps, body, meta);
+  btn.addEventListener("click", () => {
+    t.classList.toggle("closed");
+    PREF.ocultar = t.classList.contains("closed");
+  });
+  chat.append(t);
   chat.scrollTop = chat.scrollHeight;
-  return box;
+  return { t, steps, body, meta, btn };
 }
+
+function resumirTurno(turno, dados) {
+  const t = turno.t;
+  const n = t.querySelectorAll(".step").length;
+  const d = dados || {};
+  const txt = t.querySelector(".ttxt");
+  const partes = [];
+  if (n) partes.push(`${n} passo${n > 1 ? "s" : ""}`);
+  if (d.ferramentas && d.ferramentas.length) {
+    partes.push(`${d.ferramentas.length} ${d.ferramentas.length === 1 ? "ferramenta" : "ferramentas"}`);
+  }
+  if (d.total_tokens) partes.push(`${fmtNum(d.total_tokens)} tokens`);
+  if (txt) txt.textContent = partes.length ? partes.join(" · ") : "resposta";
+  if (d.total_tokens) {
+    const nomeModelo = String(d.modelo || "").split("/").pop().replace(/:free$/, "");
+    const curto = nomeModelo.length > 20 ? nomeModelo.slice(0, 19) + "…" : nomeModelo;
+    turno.meta.innerHTML =
+      `<span title="tokens enviados ao modelo">↑ ${fmtNum(d.prompt_tokens || 0)}</span>` +
+      `<span title="tokens gerados pelo modelo">↓ ${fmtNum(d.completion_tokens || 0)}</span>` +
+      `<span title="chamadas ao modelo">${d.rodadas || 1} rodada(s)</span>` +
+      `<span title="${esc(nomeModelo)}">${esc(curto)}</span>`;
+  }
+  if (d.ferramentas && d.ferramentas.length) {
+    turno.t.appendChild(el("div", "turn-tools", d.ferramentas.join(" · ")));
+  }
+}
+
 function addStep(box, tipo, nome, detalhe) {
   if (tipo === "info") {
     box.append(el("div", "step", `<div class="sname">${esc(nome)}</div><div class="sarg">${esc(detalhe)}</div>`));
@@ -206,9 +269,9 @@ $("#formAgent").addEventListener("submit", async (e) => {
   ta.style.height = "auto";
   addMsg("user", texto);
 
-  const box = addSteps();
+  const turno = addTurn();
   const sp = el("div", "spinner", "<i></i><i></i><i></i>");
-  box.append(sp);
+  turno.steps.append(sp);
   chat.scrollTop = chat.scrollHeight;
   const btn = $("#formAgent").querySelector(".primary");
   btn.disabled = true;
@@ -216,11 +279,25 @@ $("#formAgent").addEventListener("submit", async (e) => {
   try {
     const r = await api("/api/agent", { method: "POST", body: { prompt: texto } });
     sp.remove();
-    (r.steps || []).forEach((s) => { if (s.tipo !== "resposta") addStep(box, s.tipo, s.nome, s.detalhe); });
-    addMsg("bot", r.answer || "(sem resposta)");
+    let tokens = null;
+    (r.steps || []).forEach((s) => {
+      if (s.tipo === "resposta") return;
+      if (s.tipo === "tokens") {
+        try {
+          tokens = JSON.parse(s.detalhe);
+        } catch (_) {
+          tokens = null;
+        }
+        return;
+      }
+      addStep(turno.steps, s.tipo, s.nome, s.detalhe);
+    });
+    turno.body.append(el("div", "bubble", `<strong>shark</strong><p>${esc(r.answer || "(sem resposta)")}</p>`));
+    resumirTurno(turno, tokens);
   } catch (err) {
     sp.remove();
-    addStep(box, "erro", "rede", String(err));
+    addStep(turno.steps, "erro", "rede", String(err));
+    resumirTurno(turno, null);
   }
   btn.disabled = false;
   loadState();
@@ -454,6 +531,200 @@ $("#cfgRemoveKey").addEventListener("click", async () => {
   await loadState();
 });
 
+/* ═══════════════════════ loja / marketplace ═══════════════════════ */
+const RISCO_META = {
+  safe: { icone: "🟢", rotulo: "só leitura", cor: "r-safe" },
+  write: { icone: "🟡", rotulo: "escreve", cor: "r-write" },
+  exec: { icone: "🟠", rotulo: "executa comando", cor: "r-exec" },
+  danger: { icone: "🔴", rotulo: "apaga/perigoso", cor: "r-danger" },
+};
+let LOJA = { instalados: [], catalogo: [], kits: [] };
+
+function riscoTag(r) {
+  const m = RISCO_META[r] || RISCO_META.safe;
+  return `<span class="rtag ${m.cor}">${m.icone} ${m.rotulo}</span>`;
+}
+
+async function carregarLoja() {
+  try {
+    LOJA = await api("/api/plugins");
+  } catch (e) {
+    LOJA = { instalados: [], catalogo: [], kits: [], erro: String(e) };
+  }
+  const badge = $("#lojaBadge");
+  badge.textContent = (LOJA.catalogo || []).length;
+  badge.style.display = (LOJA.catalogo || []).length ? "" : "none";
+  renderLoja();
+  renderPlugins();
+}
+
+function renderLoja() {
+  /* kits */
+  const kl = $("#kitList");
+  kl.innerHTML = "";
+  (LOJA.kits || []).forEach((k) => {
+    const ja = (LOJA.instalados || []).map((x) => x.id);
+    const faltam = (k.plugins || []).filter((p) => !ja.includes(p));
+    const row = el("div", "kit");
+    row.innerHTML =
+      `<div class="kit-info"><strong>${esc(k.nome)}</strong><span>${esc(k.descricao || "")}</span>` +
+      `<em>${(k.plugins || []).map(esc).join(" · ")}</em></div>`;
+    const b = el("button", "primary small", faltam.length ? `instalar ${faltam.length}` : "instalado");
+    b.disabled = !faltam.length;
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      b.textContent = "instalando…";
+      const r = await api("/api/plugins", { method: "POST", body: { acao: "kit", id: k.id } });
+      toast(r.msg || r.erro || "pronto");
+      await carregarLoja();
+      await loadState();
+    });
+    row.append(b);
+    kl.append(row);
+  });
+
+  /* catálogo */
+  const g = $("#lojaGrid");
+  g.innerHTML = "";
+  const cat = LOJA.catalogo || [];
+  if (!cat.length) {
+    g.append(el("p", "hint", "Tudo do catálogo já está instalado. 🎉"));
+    return;
+  }
+  cat.forEach((p) => {
+    const c = el("div", "tcard loja-card");
+    c.innerHTML =
+      `<div class="tc-head"><span class="tname">${esc(p.nome)}</span>${riscoTag(p.risco_max)}</div>` +
+      `<p class="tdesc">${esc(p.descricao || "")}</p>` +
+      `<div class="tmeta">${(p.ferramentas || []).length} ferramentas · v${esc(p.versao || "?")} · ${esc(p.categoria || "")}</div>` +
+      (p.requer && p.requer.length ? `<div class="tmeta aviso">precisa de: ${p.requer.map(esc).join(", ")}</div>` : "");
+    const b = el("button", "primary small", "instalar");
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      b.textContent = "instalando…";
+      let r = await api("/api/plugins", { method: "POST", body: { acao: "instalar", id: p.id } });
+      if (r.precisa_confiar) {
+        const ok = confirm(
+          `"${p.nome}" executa comandos no seu dispositivo (risco ${p.risco_max}).\n\n` +
+          `Ele vai rodar com o MESMO poder que você. Leia o código antes de confiar.\n\n` +
+          `Instalar assim mesmo?`
+        );
+        if (ok) r = await api("/api/plugins", { method: "POST", body: { acao: "instalar", id: p.id, confiar: true } });
+        else {
+          b.disabled = false;
+          b.textContent = "instalar";
+          return;
+        }
+      }
+      toast(r.msg || r.erro || "pronto");
+      await carregarLoja();
+      await loadState();
+    });
+    c.append(b);
+    g.append(c);
+  });
+}
+
+function renderPlugins() {
+  const box = $("#pluginList");
+  box.innerHTML = "";
+  const inst = LOJA.instalados || [];
+  const todos = STATE.plugins || [];
+
+  const linha = (m) => {
+    const row = el("div", "prow");
+    const ativo = m.ativo !== false;
+    row.innerHTML =
+      `<div class="prow-info"><strong>${esc(m.nome || m.id)}</strong>` +
+      `<span>${esc(m.descricao || "")}</span>` +
+      `<em>${m.id} · ${m.origem || "—"} · risco ${m.risco_max || "—"}` +
+      `${m.ferramentas && m.ferramentas.length ? " · " + m.ferramentas.length + " ferramentas" : ""}` +
+      `${m.quebrado ? " · ❌ quebrado" : ""}</em></div>`;
+    if (m.origem === "instalado") {
+      const apagar = el("button", "ghost small", "remover");
+      apagar.addEventListener("click", async () => {
+        if (!confirm(`Remover o plugin "${m.nome || m.id}"?`)) return;
+        const r = await api("/api/plugins", { method: "POST", body: { acao: "remover", id: m.id } });
+        toast(r.msg || r.erro || "pronto");
+        await carregarLoja();
+        await loadState();
+      });
+      row.append(apagar);
+    }
+    const sw = el("button", "switch" + (ativo ? " on" : ""), `<i></i>`);
+    sw.title = ativo ? "desativar (não apaga)" : "ativar";
+    sw.addEventListener("click", async () => {
+      const r = await api("/api/plugins", {
+        method: "POST",
+        body: { acao: ativo ? "desativar" : "ativar", id: m.id },
+      });
+      toast(r.msg || r.erro || "pronto");
+      await carregarLoja();
+      await loadState();
+    });
+    row.append(sw);
+    return row;
+  };
+
+  /* instalados pelo usuário primeiro */
+  inst.forEach((m) => box.append(linha(m)));
+  if (inst.length) box.append(el("div", "sep"));
+
+  const embutidos = todos.filter((p) => !(p.origem === "instalado"));
+  if (embutidos.length) {
+    box.append(el("h4", "pgroup", "Vêm com o harness"));
+    embutidos.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    embutidos.forEach((m) => box.append(linha(m)));
+  }
+}
+
+/* troca de aba dentro de Ferramentas */
+$("#toolsSeg").addEventListener("click", (e) => {
+  const b = e.target.closest(".seg-item");
+  if (!b) return;
+  document.querySelectorAll("#toolsSeg .seg-item").forEach((x) => x.classList.toggle("active", x === b));
+  const alvo = "seg-" + b.dataset.seg;
+  document.querySelectorAll("#view-tools .seg-view").forEach((v) => v.classList.toggle("active", v.id === alvo));
+  const subs = {
+    list: "Clique numa ferramenta para montar os argumentos e executar de verdade.",
+    loja: "Instale plugins e kits. Tudo é conferido por hash antes de entrar, e vem com o risco declarado.",
+    plugins: "Cada plugin pode ser ligado ou desligado sem apagar nada.",
+  };
+  $("#toolsSub").textContent = subs[b.dataset.seg] || "";
+  if (b.dataset.seg === "loja" || b.dataset.seg === "plugins") carregarLoja();
+});
+
+/* aviso flutuante */
+let toastTimer = null;
+function toast(msg) {
+  let t = $("#toast");
+  if (!t) {
+    t = el("div", "toast", "");
+    t.id = "toast";
+    document.body.append(t);
+  }
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 5200);
+}
+
+/* mostrar/esconder raciocínio em todas as conversas */
+function aplicarPrefPassos() {
+  const esconder = PREF.escondido;
+  const b = $("#btnRaciocinio");
+  b.classList.toggle("off", esconder);
+  b.title = esconder ? "mostrar o raciocínio e as ferramentas usadas" : "esconder o raciocínio e as ferramentas";
+  b.querySelector(".rlabel").textContent = esconder ? "raciocínio: oculto" : "raciocínio: visível";
+  document.querySelectorAll("#chat .turn").forEach((t) => t.classList.toggle("closed", esconder));
+}
+$("#btnRaciocinio").addEventListener("click", () => {
+  PREF.ocultar = !PREF.escondido;
+  aplicarPrefPassos();
+});
+aplicarPrefPassos();
+
 /* ───────────────── init ───────────────── */
 loadState();
+carregarLoja();
 setInterval(loadState, 20000);

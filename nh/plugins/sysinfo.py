@@ -1,5 +1,6 @@
 """Plugin: sistema — relatório de saúde do aparelho (RAM, disco, bateria, uptime)."""
 
+
 from __future__ import annotations
 
 import os
@@ -12,6 +13,19 @@ from pathlib import Path
 
 from ..core import Registry
 from ..paths import WORKSPACE, has_cmd, platform_name
+
+MANIFEST = {
+    "id": "sysinfo",
+    "nome": "Saúde do sistema",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "sistema",
+    "descricao": "RAM, disco, bateria, uptime e relógio — para saber se cabe tarefa pesada.",
+    "risco_max": "safe",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["ram", "disco", "bateria"],
+}
 
 
 def _human(n: float) -> str:

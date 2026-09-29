@@ -78,9 +78,12 @@ def _post(url: str, payload: dict, api_key: str = "", timeout: int = 180) -> dic
 
 def _tool_result_text(msg: dict) -> str:
     content = msg.get("content")
-    if isinstance(content, str):
+    if isinstance(content, str) and content.strip():
         return content
-    return str(content)
+    # alguns modelos devolvem content vazio/None quando só querem "encerrar";
+    # sem isso o usuário recebia a palavra "None" na tela
+    return ("Terminei, mas o modelo não escreveu uma resposta final. "
+            "Os resultados das ferramentas estão nos passos acima.")
 
 
 def run_agent(
@@ -136,6 +139,10 @@ def run_agent(
     show(f"🤖 modelo: {model} · {len(tools)} ferramentas expostas (risco ≤ {max_risk})")
     step("info", model, f"{len(tools)} ferramentas (risco ≤ {max_risk}) · até {max_rounds} rodadas")
 
+    # consumo acumulado da conversa (a UI mostra no rodapé de cada resposta)
+    uso_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    ferramentas_usadas: list[str] = []
+
     for rodada in range(1, max_rounds + 1):
         ultima = rodada >= max_rounds
 
@@ -175,6 +182,13 @@ def run_agent(
         choices = resp.get("choices") or []
         if not choices:
             return f"ERRO: resposta sem 'choices': {json.dumps(resp)[:300]}"
+        # soma o consumo desta rodada (nem todo provedor devolve 'usage')
+        _uso = resp.get("usage") or {}
+        for _k in uso_total:
+            try:
+                uso_total[_k] += int(_uso.get(_k) or 0)
+            except (TypeError, ValueError):
+                pass
         msg = choices[0].get("message", {})
         calls = msg.get("tool_calls") or []
 
@@ -182,6 +196,13 @@ def run_agent(
             text = _tool_result_text(msg)
             messages.append({"role": "assistant", "content": text})
             show("✅ pronto")
+            # atenção: step(tipo, nome, detalhe) — o JSON vai no DETALHE
+            step("tokens", "", json.dumps({
+                **uso_total,
+                "rodadas": rodada,
+                "modelo": model,
+                "ferramentas": ferramentas_usadas,
+            }, ensure_ascii=False))
             step("resposta", "", text)
             return text
 
@@ -203,6 +224,8 @@ def run_agent(
                 args = {}
             show(f"  🔧 [{rodada}] {name}({json.dumps(args, ensure_ascii=False)[:140]})")
             step("chamada", name, json.dumps(args, ensure_ascii=False))
+            if name not in ferramentas_usadas:
+                ferramentas_usadas.append(name)
             result = reg.dispatch(name, args if isinstance(args, dict) else {})
             show("     " + str(result).replace("\n", "\n     ")[:600])
             step("resultado", name, str(result))

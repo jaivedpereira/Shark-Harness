@@ -49,7 +49,12 @@
     <!-- ── Agente ── -->
     <section class="view active" id="view-chat">
       <header class="vhead">
-        <h2>Agente</h2>
+        <div class="vhead-row">
+          <h2>Agente</h2>
+          <button class="ghost small" id="btnRaciocinio" title="esconder o raciocínio e as ferramentas">
+            <span class="eye"></span><span class="rlabel">raciocínio: visível</span>
+          </button>
+        </div>
         <p>Descreva a tarefa. Ele escolhe as ferramentas, executa e mostra cada passo.</p>
       </header>
       <div class="chat" id="chat">
@@ -73,23 +78,52 @@
       </form>
     </section>
 
-    <!-- ── Ferramentas ── -->
+    <!-- ── Ferramentas + Loja + Plugins ── -->
     <section class="view" id="view-tools">
       <header class="vhead">
         <h2>Ferramentas</h2>
-        <p>Clique numa ferramenta para montar os argumentos e executar de verdade.</p>
+        <p id="toolsSub">Clique numa ferramenta para montar os argumentos e executar de verdade.</p>
       </header>
-      <div class="filters">
-        <input id="toolSearch" placeholder="filtrar ferramentas…" />
-        <div class="chips" id="riskChips">
-          <button class="chip active" data-risk="all">todas</button>
-          <button class="chip" data-risk="safe">leitura</button>
-          <button class="chip" data-risk="write">escreve</button>
-          <button class="chip" data-risk="exec">executa</button>
-          <button class="chip" data-risk="danger">apaga</button>
+
+      <div class="seg" id="toolsSeg">
+        <button class="seg-item active" data-seg="list">Ferramentas</button>
+        <button class="seg-item" data-seg="loja">Loja<span class="badge" id="lojaBadge">0</span></button>
+        <button class="seg-item" data-seg="plugins">Plugins</button>
+      </div>
+
+      <!-- 1) ferramentas -->
+      <div class="seg-view active" id="seg-list">
+        <div class="filters">
+          <input id="toolSearch" placeholder="filtrar ferramentas…" />
+          <div class="chips" id="riskChips">
+            <button class="chip active" data-risk="all">todas</button>
+            <button class="chip" data-risk="safe">leitura</button>
+            <button class="chip" data-risk="write">escreve</button>
+            <button class="chip" data-risk="exec">executa</button>
+            <button class="chip" data-risk="danger">apaga</button>
+          </div>
+        </div>
+        <div class="grid" id="toolGrid"></div>
+      </div>
+
+      <!-- 2) loja -->
+      <div class="seg-view" id="seg-loja">
+        <h3 class="sechead">Plugins disponíveis</h3>
+        <div class="grid" id="lojaGrid"></div>
+        <div class="card" style="margin-top:22px">
+          <h3>Kits</h3>
+          <p class="hint">Um clique instala o conjunto inteiro, já testado junto.</p>
+          <div class="kitlist" id="kitList"></div>
         </div>
       </div>
-      <div class="grid" id="toolGrid"></div>
+
+      <!-- 3) plugins instalados -->
+      <div class="seg-view" id="seg-plugins">
+        <p class="hint">Ligue e desligue o que carrega. <strong>Nada é apagado</strong> — o
+        plugin só sai das ferramentas e da visão da IA. O que você instalar fica em
+        <code>~/.shark-harness/plugins/</code>, fora do pacote, então o <code>git pull</code> não mexe.</p>
+        <div class="card" id="pluginList"></div>
+      </div>
     </section>
 
     <!-- ── Agendador ── -->

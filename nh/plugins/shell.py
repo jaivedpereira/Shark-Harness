@@ -7,6 +7,7 @@ Esta é a ferramenta que dá poder real ao harness. Por isso:
   - tudo fica no log de auditoria
 """
 
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,19 @@ from ..guard import check_command
 from ..paths import platform_name
 
 MAX_OUT = 6000
+
+MANIFEST = {
+    "id": "shell",
+    "nome": "Terminal do dispositivo",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "sistema",
+    "descricao": "Rodar comandos no PC, Linux ou Termux: instalar pacote, usar git, mover arquivo.",
+    "risco_max": "exec",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["shell", "comando", "terminal"],
+}
 
 
 def run_shell(command: str, cwd: str = "", timeout: int = 60) -> str:

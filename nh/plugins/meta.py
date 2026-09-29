@@ -1,11 +1,25 @@
 """Plugin: meta — o harness falando de si mesmo."""
 
+
 from __future__ import annotations
 
 import json
 
 from ..core import Registry
 from ..guard import AUDIT_FILE
+
+MANIFEST = {
+    "id": "meta",
+    "nome": "Auto-conhecimento",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "núcleo",
+    "descricao": "Listar as ferramentas, ver os parâmetros de uma e ler o histórico de auditoria.",
+    "risco_max": "safe",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["ferramentas", "auditoria"],
+}
 
 
 def list_tools(filtrar: str = "") -> str:

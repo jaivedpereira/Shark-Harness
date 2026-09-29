@@ -14,6 +14,7 @@ Se a ferramenta de sistema não existir, a resposta diz exatamente o que falta
 (ex.: "instale termux-api") em vez de estourar um erro cru.
 """
 
+
 from __future__ import annotations
 
 import platform
@@ -25,6 +26,19 @@ from ..core import Registry, workspace
 from ..paths import has_cmd, platform_name
 
 PLAT = platform_name()
+
+MANIFEST = {
+    "id": "device",
+    "nome": "Controle do aparelho",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "dispositivo",
+    "descricao": "Notificação, print de tela, área de transferência e abrir link/app.",
+    "risco_max": "write",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["android", "termux", "notificação"],
+}
 
 
 def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:

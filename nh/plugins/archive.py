@@ -5,6 +5,7 @@ fazer backup de uma pasta, conferir que o arquivo baixado não corrompeu, e
 restaurar depois.
 """
 
+
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +17,19 @@ from pathlib import Path
 
 from ..core import Registry, workspace
 from ..guard import check_path
+
+MANIFEST = {
+    "id": "archive",
+    "nome": "Backup e integridade",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "sistema",
+    "descricao": "Compactar em zip/tar.gz, extrair, conferir hash e achar o que ocupa espaço.",
+    "risco_max": "write",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["backup", "zip", "hash"],
+}
 
 
 def _destino(caminho: str) -> Path:

@@ -203,6 +203,9 @@ nh serve --selftest    # handshake + tools/list + tools/call, por stdio real
 
 ## 🧰 As 46 ferramentas
 
+> O harness vem com **11 plugins embutidos (46 ferramentas)**. O resto você instala
+> pelo **marketplace** — veja a seção seguinte.
+
 | plugin | ferramentas | risco |
 |---|---|---|
 | **shell** | `run_shell`, `which`, `env_get` | 🟠 exec |
@@ -236,6 +239,56 @@ Também dá para ajustar na interface, em **Configurações → Rodadas por tare
 
 Se um pedido for grande demais, ele resolve a parte principal, entrega o que
 conseguiu e diz o que ficou pendente — aí você pede para continuar de onde parou.
+
+---
+
+## 🛒 Marketplace de plugins
+
+O harness vem com o essencial; o resto você instala quando precisar. Tudo roda pelos
+mesmos três caminhos (interface, CLI e agente).
+
+```bash
+nh plugin catalogo            # o que existe para instalar
+nh plugin procurar pdf        # busca por termo
+nh plugin info obras          # ficha completa (risco, ferramentas, dependências)
+nh plugin instalar obras      # baixa, confere o hash e instala
+nh plugin listar              # tudo que está carregado + origem
+nh plugin desativar media     # desliga sem apagar
+nh plugin ativar media        # liga de volta
+nh plugin remover obras       # apaga o que você instalou
+nh plugin kits                # conjuntos por perfil
+nh plugin kit essencial       # instala o kit inteiro
+```
+
+Na interface: **Ferramentas → Loja** (catálogo e kits) e **Ferramentas → Plugins**
+(liga/desliga cada um com um interruptor).
+
+### Onde os plugins instalados ficam (e por que isso importa)
+
+```
+nh/plugins/                   # embutidos — vêm no pacote, atualizam com `git pull`
+~/.shark-harness/plugins/     # instalados por você — SOBREVIVEM ao `git pull`
+```
+
+Antes só existia a primeira pasta, então atualizar o pacote **apagaria** o que você
+instalou. Agora o loader varre as duas, e um plugin pode ser um `.py` solto ou uma
+pasta com `__init__.py` (para quando precisa de template ou asset junto).
+
+### Confiança, sem enfeite
+
+Plugin de terceiro **roda com o mesmo poder que você** — não existe sandbox de
+verdade dentro do mesmo processo Python, igual `pip install`. O que o instalador
+garante:
+
+| trava | o que impede |
+|---|---|
+| **sha256 fixado** no catálogo | alguém trocar o arquivo depois de publicado |
+| **risco conferido no código (AST)** | plugin dizer "sou só leitura" e importar `subprocess` |
+| **confirmação explícita** para risco `exec`/`danger` | instalar sem saber que executa comando |
+| **catálogo curado** | plugin malicioso entrar na lista |
+
+Se o risco declarado não bater com o código, a instalação **aborta** e nada é gravado.
+Leia o código antes de confiar — é uma pasta com um arquivo `.py`, abre no editor.
 
 ---
 

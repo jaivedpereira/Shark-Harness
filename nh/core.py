@@ -1,11 +1,20 @@
 """Núcleo do Shark Harness — registro de ferramentas e carregamento de plugins.
 
 O núcleo não sabe fazer nada sozinho. Ele só:
-  1. descobre plugins em `nh/plugins/*.py`
+  1. descobre plugins em DUAS pastas (embutidos + instalados pelo usuário)
   2. deixa cada plugin registrar ferramentas (`register(reg)`)
   3. despacha chamadas (`reg.dispatch(nome, args)`) com auditoria
 
 Todo o resto — shell, arquivos, agendador, dispositivo — é plugin.
+
+Pastas de plugin (a ordem importa: o usuário pode sobrescrever um embutido):
+  1. `nh/plugins/`                    embutidos, vêm no pacote (git pull atualiza)
+  2. `~/.shark-harness/plugins/`      instalados pelo usuário — SOBREVIVEM ao git pull
+
+Cada plugin pode declarar um `MANIFEST` (dict) no topo do módulo com id, nome,
+versão, autor, categoria, risco máximo e dependências. É o que o marketplace lê.
+Um plugin pode ser um arquivo `.py` solto ou uma PASTA com `__init__.py` (para
+quando precisa de template, asset ou tradução junto).
 """
 
 from __future__ import annotations
@@ -138,18 +147,123 @@ class Registry:
 PLUGINS_PACKAGE = "nh.plugins"
 
 
-def load_plugins(reg: Registry | None = None) -> Registry:
-    """Importa todo módulo em nh/plugins e chama register(reg) de cada um."""
+def pasta_usuario():
+    """Pasta onde ficam os plugins instalados pelo usuário (sobrevive ao git pull)."""
+    from .paths import HOME
+
+    return HOME / "plugins"
+
+
+def _registrar(mod, reg: Registry) -> None:
+    hook = getattr(mod, "register", None)
+    if callable(hook):
+        hook(reg)
+
+
+def _plugin_do_usuario(caminho: Path):
+    """Importa um plugin instalado a partir de um arquivo .py ou de uma pasta."""
+    if caminho.is_dir():
+        alvo = caminho / "__init__.py"
+        if not alvo.is_file():
+            return None
+    else:
+        alvo = caminho
+    nome = f"shark_plugin_{caminho.stem}"
+    if nome in __import__("sys").modules:  # já carregado (recarga a quente)
+        return __import__("sys").modules[nome]
+    try:
+        spec = importlib.util.spec_from_file_location(nome, alvo)
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        __import__("sys").modules[nome] = mod
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception as exc:  # noqa: BLE001 — plugin quebrado não derruba o harness
+        print(f"⚠️  plugin '{caminho.name}' falhou ao carregar: {type(exc).__name__}: {exc}")
+        return None
+
+
+def _desativados() -> set[str]:
+    from .paths import read_config
+
+    return {str(x) for x in (read_config().get("plugins_desativados") or [])}
+
+
+def load_plugins(reg: Registry | None = None, *, incluir_desativados: bool = False) -> Registry:
+    """Carrega os plugins embutidos e os instalados pelo usuário.
+
+    Plugins desativados (config.json → `plugins_desativados`) são pulados —
+    é assim que o usuário escolhe o que carrega, sem apagar nada.
+    """
     reg = reg or Registry()
+    fora = set() if incluir_desativados else _desativados()
+
+    # 1) embutidos (vêm no pacote)
+    pkg = importlib.import_module(PLUGINS_PACKAGE)
+    for info in pkgutil.iter_modules(pkg.__path__):
+        if info.name.startswith("_") or info.name in fora:
+            continue
+        _registrar(importlib.import_module(f"{PLUGINS_PACKAGE}.{info.name}"), reg)
+
+    # 2) instalados pelo usuário (ficam fora do pacote, em ~/.shark-harness/plugins)
+    pasta = pasta_usuario()
+    if pasta.is_dir():
+        for item in sorted(pasta.iterdir()):
+            if item.name.startswith((".", "_")):
+                continue
+            if item.is_file() and item.suffix != ".py":
+                continue
+            if item.stem in fora:
+                continue
+            mod = _plugin_do_usuario(item)
+            if mod is not None:
+                _registrar(mod, reg)
+    return reg
+
+
+def manifesto(mod) -> dict:
+    """Lê o MANIFEST do módulo do plugin (ou deduz um mínimo pelo nome)."""
+    m = getattr(mod, "MANIFEST", None)
+    if isinstance(m, dict):
+        d = dict(m)
+        d.setdefault("id", d.get("nome", "").lower() or getattr(mod, "__name__", "").split(".")[-1])
+        return d
+    return {}
+
+
+def manifestos() -> list[dict]:
+    """Todos os manifestos conhecidos: embutidos + instalados (inclui desativados)."""
+    saida: list[dict] = []
     pkg = importlib.import_module(PLUGINS_PACKAGE)
     for info in pkgutil.iter_modules(pkg.__path__):
         if info.name.startswith("_"):
             continue
-        mod = importlib.import_module(f"{PLUGINS_PACKAGE}.{info.name}")
-        hook = getattr(mod, "register", None)
-        if callable(hook):
-            hook(reg)
-    return reg
+        try:
+            mod = importlib.import_module(f"{PLUGINS_PACKAGE}.{info.name}")
+        except Exception:  # noqa: BLE001
+            continue
+        d = manifesto(mod)
+        d.setdefault("id", info.name)
+        d["origem"] = "embutido"
+        saida.append(d)
+
+    pasta = pasta_usuario()
+    if pasta.is_dir():
+        for item in sorted(pasta.iterdir()):
+            if item.name.startswith((".", "_")):
+                continue
+            if item.is_file() and item.suffix != ".py":
+                continue
+            mod = _plugin_do_usuario(item)
+            if mod is None:
+                continue
+            d = manifesto(mod)
+            d.setdefault("id", item.stem)
+            d["origem"] = "instalado"
+            d["arquivo"] = str(item)
+            saida.append(d)
+    return saida
 
 
 # ------------------------------------------------------------------ schema ---

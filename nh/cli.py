@@ -198,6 +198,150 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plugin(args: argparse.Namespace) -> int:
+    """Marketplace: catálogo, instalar, ativar/desativar e kits."""
+    from . import market
+
+    acao = args.action
+
+    if acao == "catalogo":
+        itens = market.disponiveis()
+        if not itens:
+            print("📦 catálogo vazio (ou tudo já instalado). Veja com: nh plugin listar")
+            return 0
+        print(f"📦 {len(itens)} plugin(s) disponíveis no catálogo:\n")
+        for p in itens:
+            risco = p.get("risco_max", "safe")
+            marca = {"safe": "🟢", "write": "🟡", "exec": "🟠", "danger": "🔴"}.get(risco, "⚪")
+            print(f"  {marca} {p['id']:10} {p['nome']} — v{p.get('versao', '?')}")
+            print(f"     {p.get('descricao', '')}")
+            print(f"     {len(p.get('ferramentas', []))} ferramentas · risco {risco} · "
+                  f"categoria {p.get('categoria', '—')}")
+            if p.get("requer"):
+                print(f"     precisa de: {', '.join(p['requer'])}")
+            print()
+        print("Instale com:  nh plugin instalar <id>")
+        return 0
+
+    if acao == "listar":
+        from .core import manifestos
+        from .paths import read_config
+
+        todos = manifestos()
+        desativados = set(str(x) for x in (read_config().get("plugins_desativados") or []))
+        if not todos:
+            print("nenhum plugin encontrado.")
+            return 0
+        print(f"🧩 {len(todos)} plugin(s):\n")
+        for m in todos:
+            pid = m.get("id", "?")
+            estado = "⏸️  desativado" if pid in desativados else "✅ ativo"
+            if m.get("quebrado"):
+                estado = "❌ quebrado"
+            origem = m.get("origem", "?")
+            print(f"  {estado:14} {pid:10} {m.get('nome', pid):20} [{origem}] "
+                  f"risco {m.get('risco_max', '—')}")
+            if m.get("descricao"):
+                print(f"      {m['descricao']}")
+        print("\nVer um só:       nh plugin info <id>")
+        print("Ligar/desligar:  nh plugin ativar|desativar <id>")
+        return 0
+
+    if acao == "procurar":
+        termo = (args.id or "").lower()
+        if not termo:
+            print("uso: nh plugin procurar <termo>")
+            return 1
+        achados = []
+        for p in market.catalogo().get("plugins", []):
+            alvo = " ".join([p.get("id", ""), p.get("nome", ""), p.get("descricao", ""),
+                             " ".join(p.get("tags", [])), p.get("categoria", "")]).lower()
+            if termo in alvo:
+                achados.append((p, False))
+        tenho = {m.get("id") for m in market.instalados()}
+        for m in market.instalados():
+            alvo = f"{m.get('id','')} {m.get('nome','')} {m.get('descricao','')}".lower()
+            if termo in alvo:
+                achados.append((m, True))
+        if not achados:
+            print(f"🔍 nada encontrado para '{termo}'.")
+            return 0
+        for p, instalado in achados:
+            estado = " (já instalado)" if instalado else ""
+            print(f"  {p.get('id'):10} {p.get('nome')}{estado}\n      {p.get('descricao', '')}")
+        return 0
+
+    if acao == "info":
+        pid = args.id
+        for m in market.instalados():
+            if m.get("id") == pid:
+                return _mostrar_info(m, "instalado")
+        item = next((p for p in market.catalogo().get("plugins", []) if p.get("id") == pid), None)
+        if item is None:
+            from .core import manifestos
+
+            for m in manifestos():
+                if m.get("id") == pid:
+                    return _mostrar_info(m, m.get("origem", "embutido"))
+            print(f"❌ '{pid}' não existe (nem instalado, nem no catálogo).")
+            return 1
+        return _mostrar_info(item, "catálogo")
+
+    if acao == "instalar":
+        print(market.instalar(args.id, confirmar_exec=args.confiar))
+        return 0
+
+    if acao == "remover":
+        print(market.remover(args.id))
+        return 0
+
+    if acao in ("ativar", "desativar"):
+        print(market.ativar(args.id) if acao == "ativar" else market.desativar(args.id))
+        return 0
+
+    if acao == "kits":
+        ks = market.kits()
+        if not ks:
+            print("nenhum kit no catálogo.")
+            return 0
+        print(f"📦 {len(ks)} kit(s) prontos:\n")
+        for k in ks:
+            print(f"  {k['id']:10} {k['nome']} — {k.get('descricao', '')}")
+            print(f"     plugins: {', '.join(k.get('plugins', []))}")
+        print("\nInstale com:  nh plugin kit <id>")
+        return 0
+
+    if acao == "kit":
+        print(market.instalar_kit(args.id, confirmar_exec=args.confiar))
+        return 0
+
+    print(f"ação desconhecida: {acao}")
+    return 1
+
+
+def _mostrar_info(m: dict, origem: str) -> int:
+    print(f"🧩 {m.get('nome', m.get('id'))}  (id: {m.get('id')})")
+    print(f"   {m.get('descricao', '—')}")
+    print(f"   versão.....: {m.get('versao', '—')}")
+    print(f"   autor......: {m.get('autor', '—')}")
+    print(f"   categoria..: {m.get('categoria', '—')}")
+    print(f"   origem.....: {origem}")
+    print(f"   risco máx..: {m.get('risco_max', '—')}")
+    if m.get("requer"):
+        print(f"   precisa de.: {', '.join(m['requer'])}")
+    if m.get("plataformas"):
+        print(f"   plataformas: {', '.join(m['plataformas'])}")
+    if m.get("ferramentas"):
+        print(f"   ferramentas: {', '.join(m['ferramentas'])}")
+    if m.get("arquivo"):
+        print(f"   arquivo....: {m['arquivo']}")
+    if m.get("sha256"):
+        print(f"   sha256.....: {m['sha256'][:32]}…")
+    if m.get("tags"):
+        print(f"   tags.......: {', '.join(m['tags'])}")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     argv = []
     if args.list:
@@ -277,6 +421,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     d2 = sub.add_parser("doctor", help="diagnóstico do ambiente (testa escrita de arquivo de verdade)")
     d2.set_defaults(func=cmd_doctor)
+
+    pl = sub.add_parser("plugin", help="marketplace: catálogo, instalar, ativar/desativar, kits")
+    pl.add_argument("action", choices=["catalogo", "listar", "procurar", "info", "instalar",
+                                       "remover", "ativar", "desativar", "kits", "kit"])
+    pl.add_argument("id", nargs="?", default="", help="id do plugin (ou termo, em 'procurar')")
+    pl.add_argument("--confiar", action="store_true",
+                    help="autoriza plugin que executa comando (risco exec/danger)")
+    pl.set_defaults(func=cmd_plugin)
 
     s = sub.add_parser("serve", help="servidor MCP em stdio")
     s.add_argument("--list", action="store_true")

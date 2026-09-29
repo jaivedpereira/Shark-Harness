@@ -5,6 +5,7 @@ grava num temporário, roda e devolve a saída real. O código também passa pel
 deny-list (um `os.system("rm -rf /")` é bloqueado igual).
 """
 
+
 from __future__ import annotations
 
 import subprocess
@@ -18,6 +19,19 @@ from ..guard import check_command
 from ..paths import has_cmd
 
 MAX_OUT = 8000
+
+MANIFEST = {
+    "id": "code",
+    "nome": "Programar e testar",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "dev",
+    "descricao": "Escrever e executar Python ou Node na hora, sem criar arquivo na mão.",
+    "risco_max": "exec",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["python", "node", "código"],
+}
 
 
 def _run_code(lang: str, code: str, timeout: int) -> str:

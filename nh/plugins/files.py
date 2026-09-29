@@ -4,6 +4,7 @@ Toda escrita passa por `guard.check_path`, que barra caminhos críticos do
 sistema e vetores de persistência automática (~/.bashrc, authorized_keys, etc.).
 """
 
+
 from __future__ import annotations
 
 import fnmatch
@@ -15,6 +16,19 @@ from ..core import Registry, workspace
 from ..guard import check_path
 
 MAX_READ = 20000
+
+MANIFEST = {
+    "id": "files",
+    "nome": "Arquivos",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "sistema",
+    "descricao": "Ler, escrever, listar, procurar por nome e por conteúdo, criar pasta e apagar.",
+    "risco_max": "danger",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["arquivo", "pasta", "disco"],
+}
 
 
 def _abs(path: str) -> Path:

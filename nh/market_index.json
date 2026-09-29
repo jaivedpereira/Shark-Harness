@@ -1,0 +1,139 @@
+{
+  "versao": 1,
+  "atualizado": "2026-09-29",
+  "repositorio": "https://github.com/jaivedpereira/Shark-Harness",
+  "plugins": [
+    {
+      "id": "git",
+      "nome": "Git",
+      "versao": "1.0.0",
+      "autor": "jaivedpereira",
+      "categoria": "dev",
+      "descricao": "Status, log, diff, commit, pull, push e branches do repositório atual.",
+      "risco_max": "exec",
+      "requer": [
+        "git"
+      ],
+      "tags": [
+        "git",
+        "versionamento",
+        "desenvolvimento"
+      ],
+      "plataformas": [
+        "linux",
+        "windows",
+        "darwin",
+        "android"
+      ],
+      "ferramentas": [
+        "git_branch",
+        "git_commit",
+        "git_diff",
+        "git_log",
+        "git_pull",
+        "git_push",
+        "git_status"
+      ],
+      "sha256": "f18cc1bb912f4eb3f0abea514b0ca1f574fd5498903e143e3e93931cf6762aaa",
+      "tamanho": 6253,
+      "arquivo": "git.py",
+      "url": "https://raw.githubusercontent.com/jaivedpereira/Shark-Harness/main/marketplace/plugins/git.py"
+    },
+    {
+      "id": "obras",
+      "nome": "Cálculo de Obras",
+      "versao": "1.0.0",
+      "autor": "jaivedpereira",
+      "categoria": "engenharia",
+      "descricao": "Concreto, aço CA-50, reboco, rampa e conversão de unidades para construção civil.",
+      "risco_max": "safe",
+      "requer": [],
+      "tags": [
+        "construção",
+        "engenharia",
+        "nbr",
+        "edificações"
+      ],
+      "plataformas": [
+        "linux",
+        "windows",
+        "darwin",
+        "android"
+      ],
+      "ferramentas": [
+        "concreto_volume",
+        "converter_unidade",
+        "peso_aco",
+        "rampa_inclinacao",
+        "reboco_material",
+        "tijolos_parede"
+      ],
+      "sha256": "b23eb76d6c7422a4a26074f121e882a0c42b002735d53abba1c3e01e5e3076f1",
+      "tamanho": 8873,
+      "arquivo": "obras.py",
+      "url": "https://raw.githubusercontent.com/jaivedpereira/Shark-Harness/main/marketplace/plugins/obras.py"
+    },
+    {
+      "id": "texto",
+      "nome": "Texto e Senhas",
+      "versao": "1.0.0",
+      "autor": "jaivedpereira",
+      "categoria": "utilidades",
+      "descricao": "Base64, senha forte, hash, contagem de texto, extrair links e slug de título.",
+      "risco_max": "safe",
+      "requer": [],
+      "tags": [
+        "texto",
+        "utilidades",
+        "senha",
+        "base64"
+      ],
+      "plataformas": [
+        "linux",
+        "windows",
+        "darwin",
+        "android"
+      ],
+      "ferramentas": [
+        "base64_codificar",
+        "base64_decodificar",
+        "contar_texto",
+        "extrair_links",
+        "gerar_senha",
+        "hash_texto",
+        "slug"
+      ],
+      "sha256": "434412960a8b8cf4350db52b148750faa6ee93bba1920066d355f51e53cd5c39",
+      "tamanho": 4710,
+      "arquivo": "texto.py",
+      "url": "https://raw.githubusercontent.com/jaivedpereira/Shark-Harness/main/marketplace/plugins/texto.py"
+    }
+  ],
+  "kits": [
+    {
+      "id": "dev",
+      "nome": "Kit Dev",
+      "descricao": "Para programar: versionamento no dia a dia.",
+      "plugins": [
+        "git"
+      ]
+    },
+    {
+      "id": "obras",
+      "nome": "Kit Obras",
+      "descricao": "Cálculo de construção civil (Edificações).",
+      "plugins": [
+        "obras"
+      ]
+    },
+    {
+      "id": "essencial",
+      "nome": "Kit Essencial",
+      "descricao": "O que eu instalaria primeiro: versionamento + utilidades de texto.",
+      "plugins": [
+        "git",
+        "texto"
+      ]
+    }
+  ]
+}

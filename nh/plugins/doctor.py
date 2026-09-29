@@ -6,6 +6,7 @@ com a dica de correção específica de cada plataforma (ex.: Termux precisa de
 `termux-setup-storage` para escrever em /sdcard).
 """
 
+
 from __future__ import annotations
 
 import os
@@ -15,6 +16,19 @@ from pathlib import Path
 
 from ..core import Registry
 from ..paths import CONFIG_FILE, HOME, JOBS_FILE, WORKSPACE, has_cmd, platform_name
+
+MANIFEST = {
+    "id": "doctor",
+    "nome": "Diagnóstico",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "núcleo",
+    "descricao": "Testar se a escrita de arquivo funciona e checar o ambiente inteiro.",
+    "risco_max": "write",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["diagnóstico", "debug", "ambiente"],
+}
 
 
 def _teste_escrita(pasta: Path) -> tuple[bool, str]:

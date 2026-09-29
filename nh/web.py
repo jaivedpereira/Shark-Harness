@@ -120,6 +120,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
             return self._json(self._config_atual())
+        if rota == "/api/plugins":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            return self._json(self._estado_plugins())
         return self._json({"error": "rota desconhecida"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -139,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._agente(body.get("prompt", "")))
         if rota == "/api/config":
             return self._json(self._salvar_config(body))
+        if rota == "/api/plugins":
+            return self._json(self._acao_plugin(body))
         if rota == "/api/config/testar":
             return self._json(self._testar_llm())
         return self._json({"error": "rota desconhecida"}, 404)
@@ -167,6 +173,60 @@ class Handler(BaseHTTPRequestHandler):
                 "origem": "ambiente" if (os.environ.get("SHARK_LLM_KEY") or os.environ.get("NH_LLM_KEY")) else ("arquivo" if cfg.get("llm_key") else ""),
             },
             "arquivo": str(CONFIG_FILE),
+        }
+
+    # ------------------------------------------------------------------ loja ---
+    def _estado_plugins(self) -> dict:
+        """Estado do marketplace: instalados, disponíveis e kits."""
+        from . import market
+        from .core import pasta_usuario
+
+        try:
+            instalados = market.instalados()
+            disponiveis = market.disponiveis()
+            kits = market.kits()
+        except Exception as exc:  # noqa: BLE001
+            return {"instalados": [], "catalogo": [], "kits": [],
+                    "erro": f"{type(exc).__name__}: {exc}"}
+        return {
+            "instalados": instalados,
+            "catalogo": disponiveis,
+            "kits": kits,
+            "pasta": str(pasta_usuario()),
+        }
+
+    def _acao_plugin(self, body: dict) -> dict:
+        """Instala, remove, ativa, desativa ou instala um kit."""
+        from . import market
+
+        acao = str(body.get("acao") or "")
+        pid = str(body.get("id") or "").strip()
+        confiar = bool(body.get("confiar"))
+        if not pid:
+            return {"ok": False, "erro": "informe o id do plugin."}
+        try:
+            if acao == "instalar":
+                msg = market.instalar(pid, confirmar_exec=confiar)
+            elif acao == "remover":
+                msg = market.remover(pid)
+            elif acao == "ativar":
+                msg = market.ativar(pid)
+            elif acao == "desativar":
+                msg = market.desativar(pid)
+            elif acao == "kit":
+                msg = market.instalar_kit(pid, confirmar_exec=confiar)
+            else:
+                return {"ok": False, "erro": f"ação desconhecida: {acao}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
+        # as ferramentas mudaram: recarrega o registry para a interface refletir
+        recarregar = acao in ("instalar", "remover", "ativar", "desativar", "kit")
+        return {
+            "ok": msg.startswith(("✅", "🗑️")),
+            "msg": msg,
+            "precisa_confiar": "⚠️" in msg and "--confiar" in msg,
+            "estado": self._estado_plugins(),
+            "ferramentas": len(load_plugins().names()) if recarregar else None,
         }
 
     def _salvar_config(self, body: dict) -> dict:
@@ -299,6 +359,7 @@ class Handler(BaseHTTPRequestHandler):
             "platform": {"name": nome, "icon": icone, "raw": plat},
             "max_risk": self.max_risk,
             "tools": tools,
+            "plugins": self._plugins_resumo(),
             "jobs": jobs,
             "audit": audit,
             "sysinfo": self.reg.dispatch("sysinfo_report", {}),
@@ -308,6 +369,26 @@ class Handler(BaseHTTPRequestHandler):
                 "configured": bool(env("LLM_KEY")),
             },
         }
+
+    def _plugins_resumo(self) -> list[dict]:
+        """Todos os plugins (embutidos + instalados) com o estado ligado/desligado."""
+        from .core import manifestos
+
+        fora = set(str(x) for x in (read_config().get("plugins_desativados") or []))
+        por_plugin: dict[str, list[str]] = {}
+        for t in self.reg.tools.values():
+            por_plugin.setdefault(t.plugin or "", []).append(t.name)
+        saida = []
+        try:
+            for m in manifestos():
+                pid = str(m.get("id", ""))
+                m = dict(m)
+                m["ferramentas"] = sorted(por_plugin.get(pid, m.get("ferramentas", [])))
+                m["ativo"] = pid not in fora
+                saida.append(m)
+        except Exception:  # noqa: BLE001
+            pass
+        return saida
 
     # -------------------------------------------------------------------- cron
     def _cron(self, body: dict) -> str:

@@ -5,6 +5,7 @@ servidor caiu (`port_check`), ver o processo (`processos`) e reiniciar/derrubar
 (`matar_processo`).
 """
 
+
 from __future__ import annotations
 
 import os
@@ -17,6 +18,19 @@ from ..paths import has_cmd, platform_name
 # processos que NUNCA matamos por engano: derrubam a máquina ou a própria sessão
 PROTEGIDOS = ("systemd", "init", "kernel", "launchd", "wininit", "csrss", "winlogon",
               "services.exe", "lsass", "svchost", "explorer.exe", "termux", "com.termux")
+
+MANIFEST = {
+    "id": "proc",
+    "nome": "Processos e serviços",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "sistema",
+    "descricao": "Ver o que está rodando, ver os processos do harness e encerrar o que travou.",
+    "risco_max": "danger",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["processo", "serviço", "matar"],
+}
 
 
 def processos(filtro: str = "", limite: int = 25) -> str:

@@ -7,12 +7,26 @@ kind="shell" → payload é um comando (ex.: backup, git pull, checar site)
 kind="tool"  → payload é o NOME de uma ferramenta do harness + args em JSON
 """
 
+
 from __future__ import annotations
 
 import json
 
 from .. import scheduler
 from ..core import Registry
+
+MANIFEST = {
+    "id": "schedule",
+    "nome": "Tarefas agendadas",
+    "versao": "1.0.0",
+    "autor": "jaivedpereira",
+    "categoria": "automação",
+    "descricao": "Criar tarefa que roda sozinha no horário (cron próprio), listar, pausar e remover.",
+    "risco_max": "exec",
+    "plataformas": ["linux", "windows", "darwin", "android"],
+    "requer": [],
+    "tags": ["cron", "agendador", "automação"],
+}
 
 
 def schedule_task(nome: str, cron: str, comando: str = "", ferramenta: str = "", args_json: str = "") -> str:
