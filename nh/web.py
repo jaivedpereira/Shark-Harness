@@ -846,6 +846,41 @@ class Handler(BaseHTTPRequestHandler):
         }
 
 
+def _ja_tem_harness(host: str, port: int) -> bool:
+    """Diz se quem está ocupando a porta é outro Shark Harness (e não outro programa).
+
+    Olha a página inicial: se vier a marca do harness, é nosso — o usuário só
+    esqueceu uma janela aberta.
+    """
+    import urllib.error
+    import urllib.request
+
+    alvo = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}/"
+    try:
+        with urllib.request.urlopen(alvo, timeout=3) as resp:
+            if "SharkHarness" in str(resp.headers.get("Server", "")):
+                return True
+            amostra = resp.read(4000).decode("utf-8", "replace")
+            return "Shark Harness" in amostra or "shark-harness" in amostra
+    except Exception:  # noqa: BLE001 — qualquer coisa = não é nosso
+        return False
+
+
+def _achar_porta_livre(host: str, inicio: int, tentativas: int = 12) -> int | None:
+    """Procura a próxima porta livre a partir de `inicio`."""
+    import socket
+
+    for p in range(inicio + 1, inicio + 1 + tentativas):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind((host, p))
+                return p
+            except OSError:
+                continue
+    return None
+
+
 def serve(
     host: str = "127.0.0.1",
     port: int = 8787,
@@ -859,7 +894,35 @@ def serve(
     Handler.max_risk = max_risk
     Handler.token = "" if host in ("127.0.0.1", "localhost") else secrets.token_urlsafe(16)
 
-    httpd = ThreadingHTTPServer((host, port), Handler)
+    try:
+        httpd = ThreadingHTTPServer((host, port), Handler)
+    except OSError as exc:
+        # porta ocupada (Errno 98 no Linux/Termux, 48 no macOS): nada de traceback
+        if exc.errno not in (48, 98, 10048):
+            raise
+        if _ja_tem_harness(host, port):
+            print(f"\n⚠️  Já tem um Shark Harness rodando em http://{host}:{port}/\n")
+            print("   Você deixou uma janela antiga aberta. Ela continua no ar com o")
+            print("   código VELHO — se você acabou de dar `git pull`, o certo é parar")
+            print("   ela e subir de novo:\n")
+            print("       pkill -f 'nh web'")
+            print(f"       {'./.venv/bin/' if (Path.cwd() / '.venv' / 'bin').is_dir() else ''}nh web\n")
+            print(f"   (se preferir, a janela antiga serve — mas com a versão anterior)")
+            print(f"   (ou suba em outra porta: nh web --port {port + 1})\n")
+            return 1
+        nova = _achar_porta_livre(host, port)
+        if nova is None:
+            print(f"\n❌ A porta {port} está ocupada e não achei nenhuma livre perto.\n")
+            print("   Veja quem está usando:")
+            print(f"     python -c \"import socket;s=socket.socket();"
+                  f"print(s.connect_ex(('{host}',{port})))\"")
+            print(f"   Ou escolha outra porta na mão: nh web --port {port + 50}\n")
+            return 1
+        print(f"⚠️  A porta {port} estava ocupada — subi na {nova}.")
+        print(f"    (para usar a {port}, pare o processo antigo: pkill -f 'nh web')")
+        port = nova
+        httpd = ThreadingHTTPServer((host, port), Handler)
+
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}/"
 
     if not quiet:
