@@ -1,6 +1,5 @@
 @echo off
-chcp 65001 >nul
-REM 🦈 Shark Harness — atualiza o projeto pelo Git e ja sobe a interface.
+REM  Shark Harness - atualiza o projeto pelo Git e ja sobe a interface.
 REM   Basta dar dois cliques neste arquivo.
 cd /d "%~dp0"
 
