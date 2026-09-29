@@ -204,55 +204,64 @@ def _modelos_de_reserva(modelo: str, url: str) -> list[str]:
     return [m for m in reservas if m != modelo]
 
 
-def _chamar_llm(url: str, payload: dict, api_key: str, modelos: list[str], *,
+def _chamar_llm(alvos: list[dict], payload: dict, *,
                 tentativas: int = 2, pausa: float = 1.6, on_delta=None
-                ) -> tuple[dict | None, str, str, str]:
+                ) -> tuple[dict | None, dict | None, str, str]:
     """Chama o modelo tentando de novo e caindo para os reservas.
 
-    Devolve (resposta, modelo_que_respondeu, erro_legivel, dica). Resposta None
-    significa que nenhum modelo respondeu. Com `on_delta`, usa streaming e vai
-    entregando o texto ao vivo (a interface mostra a resposta sendo escrita).
+    `alvos` é a fila de tentativas: cada item é `{"url", "modelo", "chave"}`, então
+    dá para misturar provedores diferentes (o catálogo de modelos usa isso).
+    Devolve (resposta, alvo_que_respondeu, erro_legivel, dica). Resposta None
+    significa que nenhum alvo respondeu. Com `on_delta`, usa streaming.
     """
     erros: list[str] = []
     dica = ""
-    for modelo in modelos:
+    for alvo in alvos:
+        url = str(alvo.get("url") or "")
+        modelo = str(alvo.get("modelo") or "")
+        chave = str(alvo.get("chave") or "")
+        etiqueta = str(alvo.get("apelido") or modelo)
+        if not url or not modelo:
+            continue
         payload["model"] = modelo
         for tentativa in range(1, tentativas + 1):
             try:
                 if on_delta is not None:
-                    resp = _post_stream(url, payload, api_key, on_delta=on_delta)
+                    resp = _post_stream(url, payload, chave, on_delta=on_delta)
                 else:
-                    resp = _post(url, payload, api_key)
+                    resp = _post(url, payload, chave)
             except urllib.error.HTTPError as exc:
                 corpo = exc.read().decode("utf-8", "replace")[:300]
-                erros.append(f"{modelo}: HTTP {exc.code} — {corpo.strip()[:140]}")
+                erros.append(f"{etiqueta}: HTTP {exc.code} — {corpo.strip()[:140]}")
                 if exc.code in (401, 403):
-                    dica = ("confira a chave em Configurações (ou SHARK_LLM_KEY); "
-                            "a resposta do provedor foi " + ("não autorizada" if exc.code == 401 else "negada") + ".")
-                    return None, modelo, " | ".join(erros[-3:]), dica
+                    dica = (f"a chave de '{etiqueta}' foi recusada — confira em Ajustes "
+                            "ou no catálogo de modelos.")
+                    return None, alvo, " | ".join(erros[-3:]), dica
                 if exc.code == 402:
                     dica = "a conta está sem saldo — troque de modelo ou use um ':free'."
+                if exc.code == 404:
+                    dica = f"'{modelo}' não existe nesse provedor — confira o nome do modelo."
                 if "1010" in corpo:
                     dica = "o Cloudflare bloqueou a requisição (User-Agent/rede)."
             except Exception as exc:  # noqa: BLE001
-                erros.append(f"{modelo}: {type(exc).__name__}: {exc}")
+                erros.append(f"{etiqueta}: {type(exc).__name__}: {exc}")
                 dica = dica or "não consegui falar com o provedor — confira a internet."
             else:
                 erro = _erro_do_provedor(resp)
                 if erro:
-                    erros.append(f"{modelo}: {erro}")
+                    erros.append(f"{etiqueta}: {erro}")
                     dica = dica or ("o provedor está instável nesse modelo; "
                                     "tentei de novo e chamei os modelos reserva.")
                     if "rate" in erro.lower() or "429" in erro:
                         dica = "rate-limit do provedor — espere alguns segundos."
                 elif resp.get("choices"):
-                    return resp, modelo, "", ""
+                    return resp, alvo, "", ""
                 else:
-                    erros.append(f"{modelo}: resposta sem conteúdo")
+                    erros.append(f"{etiqueta}: resposta sem conteúdo")
                     dica = dica or "o provedor respondeu vazio."
             if tentativa < tentativas:
                 time.sleep(pausa * tentativa)
-    return None, modelos[0] if modelos else "", " | ".join(erros[-4:]), dica
+    return None, (alvos[0] if alvos else None), " | ".join(erros[-4:]), dica
 
 
 def _tool_result_text(msg: dict) -> str:
@@ -279,6 +288,7 @@ def run_agent(
     on_step=None,
     pasta: str = "",
     on_texto=None,
+    reservas: list[dict] | None = None,
 ) -> str:
     """Roda o agente: manda o pedido ao LLM e executa as ferramentas que ele escolher.
 
@@ -295,6 +305,10 @@ def run_agent(
 
     `on_texto(pedaço)` recebe o texto da resposta conforme o modelo escreve
     (streaming). Sem ele, a chamada é feita sem stream.
+
+    `reservas` é a fila de modelos alternativos (lista de {url, modelo, chave}),
+    normalmente vinda do catálogo: se o principal não responde, o agente tenta
+    esses antes de desistir.
     """
     reg = reg or load_plugins()
     url = url or env("LLM_URL", DEFAULT_URL)
@@ -370,6 +384,16 @@ def run_agent(
         except Exception:  # noqa: BLE001 — telemetria nunca derruba a tarefa
             pass
 
+    # fila de tentativas: o principal primeiro, depois os reservas do catálogo e,
+    # por fim, os modelos gratuitos do próprio provedor (só se for OpenRouter).
+    alvos: list[dict] = [{"url": url, "modelo": model, "chave": api_key, "apelido": ""}]
+    for r in (reservas or []):
+        if r and r.get("url") and r.get("modelo"):
+            alvos.append({"url": r["url"], "modelo": r["modelo"],
+                          "chave": r.get("chave") or "", "apelido": r.get("apelido") or ""})
+    for nome in _modelos_de_reserva(model, url):
+        alvos.append({"url": url, "modelo": nome, "chave": api_key, "apelido": ""})
+
     for rodada in range(1, max_rounds + 1):
         ultima = rodada >= max_rounds
 
@@ -389,30 +413,32 @@ def run_agent(
             payload["tools"] = []
             payload["tool_choice"] = "none"
         try:
-            resp, modelo_usado, erro_llm, dica = _chamar_llm(
-                url, payload, api_key, [model] + _modelos_de_reserva(model, url),
-                on_delta=on_texto,
-            )
+            resp, alvo_usado, erro_llm, dica = _chamar_llm(alvos, payload, on_delta=on_texto)
         except Exception as exc:  # noqa: BLE001 — blindagem: nada derruba o loop
-            resp, modelo_usado, erro_llm, dica = None, model, f"{type(exc).__name__}: {exc}", ""
+            resp, alvo_usado, erro_llm, dica = None, None, f"{type(exc).__name__}: {exc}", ""
 
         if resp is None:
-            msg = (f"❌ O provedor não respondeu.\n"
-                   f"   {modelo_usado or model}: {erro_llm or 'sem detalhe'}\n"
+            msg = (f"❌ Nenhum modelo respondeu.\n"
+                   f"   {erro_llm or 'sem detalhe'}\n"
                    + (f"\n💡 {dica}\n" if dica else "")
                    + "\nO que dá para fazer:\n"
                      "  • tentar de novo (costuma resolver se foi instabilidade passageira)\n"
-                     "  • trocar de modelo em Ajustes → Provedor de IA\n"
-                     "  • escolher um modelo ':free' do OpenRouter, que costuma ser mais estável\n"
-                     "  • definir SHARK_LLM_FALLBACK com modelos reserva separados por vírgula")
+                     "  • escolher outro modelo no topo do chat (catálogo de modelos)\n"
+                     "  • cadastrar um segundo modelo no catálogo, que serve de reserva automaticamente\n"
+                     "  • usar um modelo ':free', que costuma ser mais estável")
             step("erro", "llm", msg)
             _fechar_uso(rodada)
             return msg
 
-        if modelo_usado != model:
-            step("info", f"reserva: {modelo_usado}",
-                 f"o modelo principal ({model}) não respondeu; segui com este")
-            model = modelo_usado  # continua a conversa no que funcionou
+        if alvo_usado and (alvo_usado.get("modelo") != model or alvo_usado.get("url") != url):
+            apelido = alvo_usado.get("apelido") or alvo_usado.get("modelo")
+            step("info", f"reserva: {apelido}",
+                 f"o modelo principal ({model}) não respondeu; segui com {apelido} "
+                 f"em {alvo_usado.get('url')}")
+            model = str(alvo_usado.get("modelo") or model)
+            url = str(alvo_usado.get("url") or url)
+            api_key = str(alvo_usado.get("chave") or api_key)
+            model = model  # continua a conversa no que funcionou
 
         choices = resp.get("choices") or []
         if not choices:

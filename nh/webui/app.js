@@ -31,25 +31,41 @@ async function loadState() {
     $("#llmText").textContent = "sem conexão com o servidor";
     return;
   }
+  // blindagem: um elemento que mude de nome não pode derrubar o resto da interface
+  try {
+    pintarEstado();
+  } catch (e) {
+    console.error("loadState: falhou ao pintar o estado —", e);
+  }
+}
+
+function pintarEstado() {
   const p = STATE.platform || {};
   $("#pillPlat").textContent = `${p.name || "?"}`;
   $("#pillTools").textContent = `${STATE.tools.length} ferramentas · risco ≤ ${STATE.max_risk}`;
 
   const llm = STATE.llm || {};
-  $("#llmState").className = "dot " + (llm.configured ? "ok" : "err");
+  // quem manda é o modelo ATIVO (do catálogo, se houver) — uma fonte de verdade só,
+  // senão a barra lateral e o topo do chat mostram modelos diferentes
+  const ativo = STATE.modelo_ativo || null;
+  const nomeMostrado = ativo ? (ativo.apelido || ativo.modelo) : (llm.model || "");
+  const configurado = ativo ? !!ativo.tem_chave : !!llm.configured;
+  $("#llmState").className = "dot " + (configurado ? "ok" : "err");
   const mdot = $("#mDot");
-  if (mdot) mdot.className = "dot " + (llm.configured ? "ok" : "err");
-  // nome curto do modelo para não quebrar linha na barra lateral
-  const bruto = String(llm.model || "").split("/").pop().replace(/:free$/, "");
+  if (mdot) mdot.className = "dot " + (configurado ? "ok" : "err");
+  const bruto = String(nomeMostrado || "").split("/").pop().replace(/:free$/, "");
   const curto = bruto.length > 18 ? bruto.slice(0, 17) + "…" : bruto;
-  $("#llmText").textContent = llm.configured ? `IA ligada · ${curto}` : "IA desligada";
-  $("#llmLine").title = llm.model || "";
-  $("#llmText").title = llm.configured ? llm.model : "abra Configurações para colar a chave";
+  $("#llmText").textContent = configurado ? `IA ligada · ${curto}` : "IA desligada";
+  $("#llmLine").title = ativo ? `${ativo.apelido} · ${ativo.modelo}\n${ativo.url}` : (llm.model || "");
+  $("#llmText").title = configurado
+    ? (ativo ? `${ativo.apelido} — ${ativo.modelo} (nível ${ativo.nivel_nome})` : llm.model)
+    : "abra Configurações para colar a chave";
 
   renderTools();
   renderJobs();
   renderAudit();
   $("#sysInfo").textContent = STATE.sysinfo || "(vazio)";
+  atualizarBtnModelo();
 }
 
 /* ───────────────── navegação ───────────────── */
@@ -1303,56 +1319,249 @@ $("#fsUsar").addEventListener("click", () => {
   }
 });
 
-/* troca rápida de modelo */
-$("#btnModelo").addEventListener("click", () => {
-  $("#modelQuick").value = (CONFIG && CONFIG.atual && CONFIG.atual.model) || "";
-  $("#modelStatus").textContent = "";
-  const dl = $("#modelLista");
-  dl.innerHTML = "";
-  const provs = (CONFIG && CONFIG.providers) || [];
-  const atual = (CONFIG && CONFIG.atual && CONFIG.atual.provider) || "";
-  const p = provs.find((x) => x.id === atual) || provs[0];
-  ((p && p.models) || []).forEach((m) => {
-    const o = document.createElement("option");
-    o.value = m;
-    dl.append(o);
-  });
-  $("#modelModal").classList.add("show");
-});
-$("#modelModalClose").addEventListener("click", () => $("#modelModal").classList.remove("show"));
-$("#modelSalvar").addEventListener("click", async () => {
-  const st = $("#modelStatus");
-  const modelo = $("#modelQuick").value.trim();
-  if (!modelo) {
-    st.className = "status err";
-    st.textContent = "informe o nome do modelo.";
-    return;
+/* ═══════════════════════ catálogo de modelos ═══════════════════════ */
+let MODELOS = { modelos: [], niveis: [], ativo: "", global: {} };
+let EDITANDO = "";       // id do modelo em edição (vazio = criando)
+let TESTANDO = "";       // id do modelo com teste em andamento
+let RESULTADOS = {};     // id -> resultado do teste
+
+function hostDe(url) {
+  try {
+    return new URL(url).host;
+  } catch (_) {
+    return url;
   }
+}
+
+function atualizarBtnModelo() {
+  const m = (STATE && STATE.modelo_ativo) || null;
+  const emoji = $("#mBtnEmoji");
+  const txt = $("#mBtnTxt");
+  const btn = $("#btnModelo");
+  if (!m) return;
+  emoji.textContent = m.nivel_emoji || "⚙️";
+  txt.textContent = String(m.apelido || m.modelo || "modelo").slice(0, 22);
+  btn.title = `${m.apelido} · ${m.modelo}\n${m.url}\nnível ${m.nivel_nome}` +
+              (m.tem_chave ? "" : "\n⚠️ sem chave configurada");
+  btn.classList.toggle("alerta", !m.tem_chave);
+}
+
+async function carregarModelos() {
+  try {
+    MODELOS = await api("/api/modelos");
+    renderCatalogo();
+    atualizarBtnModelo();
+  } catch (e) {
+    $("#modelListaCat").innerHTML = `<p class="hint">não consegui carregar: ${esc(String(e))}</p>`;
+  }
+}
+
+function renderCatalogo() {
+  const box = $("#modelListaCat");
+  if (!box) return;
+  box.innerHTML = "";
+
+  if (!MODELOS.modelos.length) {
+    box.innerHTML = vazio("🧠", "Nenhum modelo cadastrado",
+      "Você está usando o modelo global do Ajustes. Cadastre modelos aqui para " +
+      "ter vários endpoints, níveis diferentes e reservas automáticas.");
+  }
+
+  // agrupa por nível (do mais potente para o mais rápido na exibição)
+  const niveis = [...(MODELOS.niveis || [])].sort((a, b) => b.nivel - a.nivel);
+  niveis.forEach((n) => {
+    const doNivel = MODELOS.modelos.filter((m) => Number(m.nivel) === Number(n.nivel));
+    if (!doNivel.length) return;
+    box.append(el("div", "mcat-grupo", `<span>${n.emoji}</span> ${esc(n.nome)}`));
+    doNivel.forEach((m) => box.append(cartaoModelo(m)));
+  });
+
+  // o modelo global aparece como uma opção fixa no fim
+  const g = MODELOS.global || {};
+  const ativoGlobal = !MODELOS.ativo;
+  const ficha = el("div", "mcard" + (ativoGlobal ? " on" : ""));
+  ficha.innerHTML =
+    `<div class="mcard-top">` +
+    `<span class="mcard-emoji">⚙️</span>` +
+    `<div class="mcard-nome"><strong>Modelo global (Ajustes)</strong>` +
+    `<code>${esc(g.modelo || "—")}</code></div>` +
+    (ativoGlobal ? `<span class="rtag r-safe">em uso</span>` : "") +
+    `</div>` +
+    `<div class="mcard-meta">${esc(hostDe(g.url || ""))} · ` +
+    `${g.tem_chave ? "com chave" : "⚠️ sem chave"}</div>`;
+  const acoes = el("div", "mcard-acoes");
+  if (!ativoGlobal) {
+    const b = el("button", "primary small", "usar este");
+    b.addEventListener("click", () => usarModelo(""));
+    acoes.append(b);
+  }
+  ficha.append(acoes);
+  box.append(el("div", "mcat-grupo", "⚙️ Global"));
+  box.append(ficha);
+}
+
+function cartaoModelo(m) {
+  const ativo = MODELOS.ativo === m.id;
+  const ficha = el("div", "mcard" + (ativo ? " on" : ""));
+  ficha.innerHTML =
+    `<div class="mcard-top">` +
+    `<span class="mcard-emoji">${m.nivel_emoji}</span>` +
+    `<div class="mcard-nome"><strong>${esc(m.apelido)}</strong>` +
+    `<code>${esc(m.modelo)}</code></div>` +
+    (ativo ? `<span class="rtag r-safe">em uso</span>` : "") +
+    (m.tem_chave ? "" : `<span class="rtag r-write">sem chave</span>`) +
+    `</div>` +
+    `<div class="mcard-meta">${esc(hostDe(m.url))} · nível ${esc(m.nivel_nome)}` +
+    (m.nota ? ` · ${esc(m.nota)}` : "") + `</div>`;
+
+  const acoes = el("div", "mcard-acoes");
+  if (!ativo) {
+    const usar = el("button", "primary small", "usar");
+    usar.addEventListener("click", () => usarModelo(m.id));
+    acoes.append(usar);
+  }
+  const testar = el("button", "ghost small", TESTANDO === m.id ? "testando…" : "testar");
+  testar.disabled = TESTANDO === m.id;
+  testar.title = "roda 3 perguntas simples e mede acerto e velocidade (gasta quase nada)";
+  testar.addEventListener("click", () => testarModelo(m.id));
+  const editar = el("button", "ghost small", "editar");
+  editar.addEventListener("click", () => editarModelo(m));
+  const del = el("button", "ghost small", "remover");
+  del.addEventListener("click", () => removerModelo(m));
+  acoes.append(testar, editar, del);
+  ficha.append(acoes);
+
+  const r = RESULTADOS[m.id];
+  if (r) ficha.append(blocoTeste(r));
+  return ficha;
+}
+
+function blocoTeste(r) {
+  const cls = r.acertos === r.total ? "s-ok" : r.acertos ? "s-aviso" : "s-erro";
+  const box = el("div", "mteste " + cls);
+  const linhas = (r.detalhes || []).map((d) =>
+    `<div class="mt-linha"><span class="mt-ico">${d.ok ? "✓" : "✗"}</span>` +
+    `<span class="mt-tempo">${d.segundos}s</span>` +
+    `<div><div class="mt-resp">${esc(String(d.resposta).slice(0, 130))}</div>` +
+    (d.ok ? "" : `<div class="mt-motivo">${esc(d.motivo || "resposta ruim")}</div>`) +
+    `</div></div>`).join("");
+  box.innerHTML =
+    `<div class="mt-top"><strong>${esc(r.veredito)}</strong>` +
+    `<span>${r.acertos}/${r.total} · média ${r.media_segundos}s</span></div>` + linhas;
+  return box;
+}
+
+async function usarModelo(id) {
+  const r = await api("/api/modelos", { method: "POST", body: { acao: "ativar", id } });
+  toast(r.msg || r.erro || "pronto", r.ok ? "ok" : "err");
+  MODELOS = r.lista || MODELOS;
+  renderCatalogo();
+  await loadState();
+}
+
+async function testarModelo(id) {
+  TESTANDO = id;
+  renderCatalogo();
+  try {
+    const r = await api("/api/modelos", { method: "POST", body: { acao: "testar", id } });
+    if (r.teste) RESULTADOS[id] = r.teste;
+    toast(r.msg || r.erro || "teste concluído", r.teste && r.teste.acertos === r.teste.total ? "ok" : "err");
+  } catch (e) {
+    toast("não consegui testar: " + e, "err");
+  }
+  TESTANDO = "";
+  renderCatalogo();
+}
+
+function editarModelo(m) {
+  EDITANDO = m.id;
+  $("#mApelido").value = m.apelido || "";
+  $("#mNivel").value = String(m.nivel || 2);
+  $("#mUrl").value = m.url || "";
+  $("#mModelo").value = m.modelo || "";
+  $("#mChave").value = "";
+  $("#mChave").placeholder = m.tem_chave_propria
+    ? `chave salva (${m.chave_mascarada}) — digite outra para trocar`
+    : "vazio = usa a chave global";
+  $("#mNota").value = m.nota || "";
+  $("#mCancelar").style.display = "";
+  $("#mSalvar").textContent = "Salvar alterações";
+  $("#modelAdd").open = true;
+  $("#mStatus").textContent = `editando "${m.apelido}"`;
+  $("#modelAdd").scrollIntoView({ block: "nearest" });
+}
+
+function limparFormModelo() {
+  EDITANDO = "";
+  ["#mApelido", "#mUrl", "#mModelo", "#mChave", "#mNota"].forEach((s) => { $(s).value = ""; });
+  $("#mChave").placeholder = "vazio = usa a chave global";
+  $("#mNivel").value = "2";
+  $("#mCancelar").style.display = "none";
+  $("#mSalvar").textContent = "Salvar modelo";
+  $("#mStatus").textContent = "";
+  $("#mStatus").className = "status";
+}
+
+async function salvarModelo() {
+  const st = $("#mStatus");
   st.className = "status";
   st.textContent = "salvando…";
-  const r = await api("/api/config", {
+  const r = await api("/api/modelos", {
     method: "POST",
     body: {
-      provider: (CONFIG.atual || {}).provider || "",
-      url: (CONFIG.atual || {}).url || "",
-      model: modelo,
-      max_risk: (CONFIG.atual || {}).max_risk || "exec",
-      max_rounds: (CONFIG.atual || {}).max_rounds || 14,
+      acao: "salvar",
+      id: EDITANDO,
+      apelido: $("#mApelido").value.trim(),
+      nivel: Number($("#mNivel").value || 2),
+      url: $("#mUrl").value.trim(),
+      modelo: $("#mModelo").value.trim(),
+      chave: $("#mChave").value,
+      nota: $("#mNota").value.trim(),
     },
   });
   if (!r.ok) {
     st.className = "status err";
-    st.textContent = r.erro || "não deu";
+    st.textContent = r.erro || r.msg || "não deu para salvar";
     return;
   }
   st.className = "status ok";
-  st.textContent = "✅ agora usando " + modelo;
-  await carregarConfig();
+  st.textContent = r.msg;
+  MODELOS = r.lista || MODELOS;
+  limparFormModelo();
+  renderCatalogo();
   await loadState();
-  setTimeout(() => $("#modelModal").classList.remove("show"), 900);
-});
+  toast(r.msg, "ok");
+}
 
-/* ═══════════════════════ detalhes de usabilidade ═══════════════════════ */
+async function removerModelo(m) {
+  if (!confirm(`Remover "${m.apelido}" do catálogo? (a chave e a config global ficam como estão)`)) return;
+  const r = await api("/api/modelos", { method: "POST", body: { acao: "remover", id: m.id } });
+  toast(r.msg || r.erro || "pronto", r.ok ? "ok" : "err");
+  MODELOS = r.lista || MODELOS;
+  renderCatalogo();
+  await loadState();
+}
+
+$("#btnModelo").addEventListener("click", async () => {
+  $("#modelModal").classList.add("show");
+  limparFormModelo();
+  await carregarModelos();
+});
+$("#modelModalClose").addEventListener("click", () => $("#modelModal").classList.remove("show"));
+$("#mSalvar").addEventListener("click", salvarModelo);
+$("#mCancelar").addEventListener("click", limparFormModelo);
+(function niveisSelect() {
+  const sel = $("#mNivel");
+  [[3, "🧠 Potente"], [2, "⚖️ Equilibrado"], [1, "⚡ Rápido"]].forEach(([v, rot]) => {
+    const o = document.createElement("option");
+    o.value = String(v);
+    o.textContent = rot;
+    sel.append(o);
+  });
+  sel.value = "2";
+})();
+
+/* ───────────────── init ───────────────── */
 /* o campo cresce conforme você escreve (até 6 linhas) e volta ao normal */
 (function campoCresce() {
   const ta = $("#prompt");
@@ -1360,10 +1569,18 @@ $("#modelSalvar").addEventListener("click", async () => {
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 132) + "px";
   };
-  ta.addEventListener("input", ajustar);
+  ta.addEventListener("input", () => {
+    ajustar();
+    // não adianta deixar "Enviar" aceso com o campo vazio
+    const b = $("#btnEnviar");
+    if (b) b.disabled = !ta.value.trim();
+  });
   ta.addEventListener("blur", () => {
     if (!ta.value.trim()) ta.style.height = "auto";
   });
+  // estado inicial: campo vazio = botão apagado
+  const b0 = $("#btnEnviar");
+  if (b0) b0.disabled = !ta.value.trim();
 })();
 
 /* Esc fecha qualquer modal aberto */

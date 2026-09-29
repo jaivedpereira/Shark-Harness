@@ -11,7 +11,7 @@
   --line:#212125;
   --line2:#2e2e34;
   --text:#ececf0;
-  --muted:#9a9aa4;
+  --muted:#a6a6b2;
   --accent:#4d94ff;
   --accent-dim:#1c283d;
   --ok:#3fb950;
@@ -981,3 +981,73 @@ button:disabled{opacity:.5;cursor:not-allowed}
 }
 /* nome do modelo na barra lateral: corta mas tem o nome inteiro no title */
 .side-foot .llm{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ══════════════════════════════════════════════════════════════
+   CATÁLOGO DE MODELOS — vários modelos, agrupados por nível
+   ══════════════════════════════════════════════════════════════ */
+.mcat{display:flex;flex-direction:column;gap:9px;margin:4px 0 16px}
+.mcat-grupo{
+  display:flex;align-items:center;gap:7px;margin-top:8px;
+  font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
+}
+.mcat-grupo:first-child{margin-top:0}
+.mcard{
+  border:1px solid var(--vidro-borda);border-radius:var(--r);padding:12px 14px;
+  background:rgba(255,255,255,.025);display:flex;flex-direction:column;gap:9px;transition:.15s;
+}
+.mcard:hover{background:rgba(255,255,255,.045)}
+.mcard.on{border-color:rgba(77,148,255,.5);background:rgba(77,148,255,.09)}
+.mcard-top{display:flex;align-items:center;gap:11px}
+.mcard-emoji{font-size:19px;flex:none}
+.mcard-nome{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.mcard-nome strong{font-size:14px}
+.mcard-nome code{
+  font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mcard-meta{font-size:11.5px;color:var(--muted);line-height:1.45}
+.mcard-acoes{display:flex;gap:7px;flex-wrap:wrap}
+
+/* resultado do teste de qualidade dentro do cartão */
+.mteste{
+  margin-top:3px;padding:10px 12px;border-radius:11px;
+  background:rgba(0,0,0,.42);border:1px solid var(--vidro-borda);
+  display:flex;flex-direction:column;gap:7px;
+}
+.mteste.s-ok{border-color:rgba(63,185,80,.35)}
+.mteste.s-aviso{border-color:rgba(210,153,34,.4)}
+.mteste.s-erro{border-color:rgba(248,81,73,.4)}
+.mt-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
+.mt-top strong{color:var(--text)}
+.mt-top span{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.mt-linha{display:flex;align-items:flex-start;gap:9px;font-size:11.5px;line-height:1.45}
+.mt-ico{flex:none;width:13px;text-align:center;font-weight:700}
+.mteste.s-ok .mt-ico{color:var(--ok)}
+.mteste.s-aviso .mt-ico{color:var(--warn)}
+.mteste.s-erro .mt-ico{color:var(--danger)}
+.mt-tempo{flex:none;width:42px;color:var(--muted);font-variant-numeric:tabular-nums;font-size:10.5px}
+.mt-resp{color:var(--text);opacity:.85;word-break:break-word}
+.mt-motivo{color:var(--warn);font-style:italic;font-size:11px;margin-top:1px}
+
+/* formulário de adicionar (recolhível) */
+.madd{
+  border:1px dashed var(--line2);border-radius:var(--r);padding:12px 14px;
+  margin-bottom:14px;background:rgba(255,255,255,.015);
+}
+.madd[open]{border-style:solid;border-color:var(--vidro-borda);background:rgba(255,255,255,.03)}
+.madd summary{
+  cursor:pointer;font-size:13px;font-weight:600;color:var(--text);
+  list-style:none;display:flex;align-items:center;gap:8px;
+}
+.madd summary::-webkit-details-marker{display:none}
+.madd summary::before{content:"›";color:var(--muted);transition:.15s;display:inline-block}
+.madd[open] summary::before{transform:rotate(90deg)}
+.madd > *:not(summary){margin-top:12px}
+
+/* botão do modelo com aviso de chave faltando */
+.ghost.alerta{border-color:rgba(210,153,34,.5);color:#e3b341}
+
+@media(max-width:900px){
+  .mcard-acoes button{flex:1}
+  .mt-linha{font-size:11px}
+}

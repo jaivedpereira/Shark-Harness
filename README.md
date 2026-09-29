@@ -137,6 +137,56 @@ de navegador, com o ícone do emblema. No Termux, rode `termux-wake-lock` antes 
 O **campo de digitar fica preso** na parte de baixo, logo acima da barra de navegação:
 a conversa rola por trás dele, sem levar o campo junto.
 
+## 🧠 Catálogo de modelos — vários modelos, cada um no seu endpoint
+
+O harness nasceu com **um** modelo. Agora você cadastra quantos quiser, cada um com o seu
+**endpoint** e o seu **nível** — e troca no topo do chat com um toque.
+
+| nível | para quê |
+|---|---|
+| ⚡ **Rápido** | respostas curtas e baratas, o dia a dia |
+| ⚖️ **Equilibrado** | o padrão: qualidade boa com velocidade razoável |
+| 🧠 **Potente** | raciocínio forte para tarefa difícil (mais lento e mais caro) |
+
+Cada item guarda: apelido, endpoint, nome do modelo, **chave própria (opcional)** e uma nota.
+
+**O nível não é enfeite — é a ordem das reservas.** Se o modelo escolhido falhar, o agente
+tenta sozinho os outros: primeiro os do **mesmo nível** (troca justa), depois os **mais
+potentes** (se algo tem que dar conta, que seja o forte). Dá para misturar provedores no
+mesmo catálogo — OpenRouter, Groq, DeepSeek e um Ollama local convivem na mesma lista.
+
+### 🔬 Teste de qualidade (o mais útil daqui)
+
+Cada modelo tem um botão **testar**: ele roda 3 perguntas simples e mede **acerto** e
+**velocidade**. Pega o que realmente atrapalha:
+
+| o que aparece | o que significa |
+|---|---|
+| `vazou o raciocínio em vez de responder` | o modelo despeja o "thinking process" em inglês |
+| `responder vazio` | devolve resposta vazia (acontece muito em modelo grátis) |
+| `HTTP 404 — saiu do plano grátis` | o modelo não existe mais nesse provedor |
+| `HTTP 429 — rate-limit` | estourou a cota (no OpenRouter grátis é diária) |
+| `média 106s` | certo, mas lento demais para usar |
+
+O teste tem teto de tempo (**~100s**): passou disso, ele já reprova por lentidão e nem faz
+as perguntas que faltam. Gasta ~180 tokens no total.
+
+```bash
+nh modelo listar                  # o catálogo, com o que está em uso
+nh modelo add --apelido "Groq rápido" --nivel 1 \
+    --url https://api.groq.com/openai/v1/chat/completions \
+    --modelo llama-3.3-70b-versatile
+nh modelo usar <id>               # escolhe o do chat (sem id = volta ao global)
+nh modelo testar <id>             # o teste de qualidade, no terminal
+nh modelo remover <id>
+```
+
+O catálogo fica no `config.json`, então sobrevive a atualização. **A chave nunca volta
+inteira para a tela** — o máximo que aparece é `sk-or-…8469`. Salvar um modelo sem informar
+chave **não apaga** a que já estava lá.
+
+---
+
 ## 📂 Sessões — trabalhar numa pasta de projeto
 
 Sessão é o modo "Claude Code": você aponta uma **pasta** e o agente trabalha *dentro dela*.

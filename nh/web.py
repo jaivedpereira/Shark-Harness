@@ -144,6 +144,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
             return self._json(self._saude())
+        if rota == "/api/modelos":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            return self._json(self._modelos())
         if rota == "/api/fs":
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
@@ -174,6 +178,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._acao_plugin(body))
         if rota == "/api/sessoes":
             return self._json(self._acao_sessao(body))
+        if rota == "/api/modelos":
+            return self._json(self._acao_modelo(body))
         if rota == "/api/usage":
             if str(body.get("acao") or "") == "limpar":
                 from . import usage
@@ -211,6 +217,73 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     # ------------------------------------------------------------------ loja ---
+    def _modelo_ativo_resumo(self) -> dict:
+        """O modelo em uso agora, para a barra do chat mostrar de relance."""
+        from . import models
+
+        try:
+            atual = models.ativo()
+            if atual:
+                info = models.nivel_info(atual.get("nivel"))
+                return {
+                    "do_catalogo": True, "id": atual.get("id"),
+                    "apelido": atual.get("apelido"), "modelo": atual.get("modelo"),
+                    "nivel": int(atual.get("nivel") or 2), "nivel_nome": info["nome"],
+                    "nivel_emoji": info["emoji"], "url": atual.get("url"),
+                    "tem_chave": models.tem_chave(atual),
+                }
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "do_catalogo": False, "id": "",
+            "apelido": env("LLM_MODEL", agent.DEFAULT_MODEL).split("/")[-1],
+            "modelo": env("LLM_MODEL", agent.DEFAULT_MODEL),
+            "nivel": 2, "nivel_nome": "Global", "nivel_emoji": "⚙️",
+            "url": env("LLM_URL", agent.DEFAULT_URL),
+            "tem_chave": bool(env("LLM_KEY", "")),
+        }
+
+    def _modelos(self) -> dict:
+        """Catálogo de modelos + o que está ativo agora."""
+        from . import models
+
+        atual = models.ativo()
+        return {
+            "modelos": models.listar(),
+            "niveis": [{"nivel": n, **info} for n, info in models.NIVEIS.items()],
+            "ativo": atual.get("id") if atual else "",
+            "global": {
+                "url": env("LLM_URL", agent.DEFAULT_URL),
+                "modelo": env("LLM_MODEL", agent.DEFAULT_MODEL),
+                "tem_chave": bool(env("LLM_KEY", "")),
+            },
+        }
+
+    def _acao_modelo(self, body: dict) -> dict:
+        """Salvar / remover / escolher / testar um modelo do catálogo."""
+        from . import models
+
+        acao = str(body.get("acao") or "")
+        try:
+            if acao == "salvar":
+                m = models.salvar(body)
+                return {"ok": True, "modelo": m,
+                        "msg": f"✅ modelo '{m['apelido']}' salvo.", "lista": self._modelos()}
+            if acao == "remover":
+                msg = models.remover(str(body.get("id") or ""))
+                return {"ok": msg.startswith("🗑️"), "msg": msg, "lista": self._modelos()}
+            if acao == "ativar":
+                msg = models.definir_ativo(str(body.get("id") or ""))
+                return {"ok": msg.startswith("✅"), "msg": msg, "lista": self._modelos()}
+            if acao == "testar":
+                r = models.testar(str(body.get("id") or ""))
+                return {"ok": bool(r.get("ok")), "teste": r,
+                        "msg": r.get("veredito") or r.get("erro") or "teste concluído",
+                        "lista": self._modelos()}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
+        return {"ok": False, "erro": f"ação desconhecida: {acao}"}
+
     def _saude(self) -> dict:
         """Checagem de saúde: responde 'o que pode estar quebrado?' de uma vez.
 
@@ -594,6 +667,7 @@ class Handler(BaseHTTPRequestHandler):
                 audit = []
         return {
             "platform": {"name": nome, "icon": icone, "raw": plat},
+            "modelo_ativo": self._modelo_ativo_resumo(),
             "max_risk": self.max_risk,
             "tools": tools,
             "plugins": self._plugins_resumo(),
@@ -730,6 +804,17 @@ class Handler(BaseHTTPRequestHandler):
                 if m.get("role") in ("user", "assistant") and m.get("content")
             ]
 
+        # qual modelo usar: o escolhido no catálogo manda; sem catálogo, o global
+        from . import models
+
+        global_ = {"llm_url": env("LLM_URL", agent.DEFAULT_URL),
+                   "llm_model": env("LLM_MODEL", agent.DEFAULT_MODEL),
+                   "llm_key": env("LLM_KEY", "")}
+        entrada = models.ativo()
+        escolhido = models.resolver(entrada, global_)
+        usar = escolhido or global_
+        fila_reserva = models.reservas() if escolhido else []
+
         resposta = agent.run_agent(
             prompt,
             reg=self.reg,
@@ -739,6 +824,10 @@ class Handler(BaseHTTPRequestHandler):
             history=historico,
             pasta=pasta,
             on_texto=on_texto if ao_vivo is not None else None,
+            url=str(usar.get("url") or ""),
+            model=str(usar.get("modelo") or ""),
+            api_key=str(usar.get("chave") or ""),
+            reservas=fila_reserva,
         )
 
         if sessao is not None:

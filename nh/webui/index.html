@@ -53,7 +53,9 @@
         <div class="vhead-row">
           <h2>Agente</h2>
           <div class="row-actions">
-            <button class="ghost small" id="btnModelo" title="trocar o modelo">modelo</button>
+            <button class="ghost small" id="btnModelo" title="escolher o modelo do chat">
+              <span id="mBtnEmoji">⚙️</span><span id="mBtnTxt">modelo</span>
+            </button>
             <button class="ghost small" id="btnRaciocinio" title="esconder o raciocínio e as ferramentas">
               <span class="eye"></span><span class="rlabel">raciocínio: visível</span>
             </button>
@@ -394,25 +396,61 @@
   </div>
 </div>
 
-<!-- ══════════ modal de modelo ══════════ -->
+<!-- ══════════ catálogo de modelos ══════════ -->
 <div class="modal" id="modelModal">
   <div class="modal-card">
     <header>
-      <h3>Trocar o modelo</h3>
+      <h3>Modelo do chat</h3>
       <button id="modelModalClose">✕</button>
     </header>
-    <p class="mdesc">O modelo é global (vale para o chat e para o agente). Trocar aqui é o mesmo
-    que mudar em Ajustes → Provedor de IA.</p>
-    <label class="block">Modelo
-      <input id="modelQuick" list="modelLista" placeholder="nome do modelo" />
-      <datalist id="modelLista"></datalist>
-    </label>
-    <div class="row between">
-      <span class="status" id="modelStatus"></span>
-      <div class="row-actions">
-        <button class="primary" id="modelSalvar" type="button">Usar este</button>
+    <p class="mdesc">Cada modelo tem o seu <strong>endpoint</strong> e o seu <strong>nível</strong>.
+    Pode cadastrar vários e trocar quando quiser — e se o escolhido falhar, os outros entram
+    de reserva sozinhos (primeiro os do mesmo nível, depois os mais potentes).</p>
+
+    <div class="mcat" id="modelListaCat"></div>
+
+    <details class="madd" id="modelAdd">
+      <summary>➕ Adicionar um modelo</summary>
+      <div class="row">
+        <label>Apelido
+          <input id="mApelido" placeholder="Nemotron grátis" />
+        </label>
+        <label>Nível
+          <select id="mNivel"></select>
+        </label>
       </div>
-    </div>
+      <label class="block">Endpoint (URL do provedor)
+        <input id="mUrl" list="urlsComuns" placeholder="https://openrouter.ai/api/v1/chat/completions" />
+      </label>
+      <datalist id="urlsComuns">
+        <option value="https://openrouter.ai/api/v1/chat/completions"></option>
+        <option value="https://api.groq.com/openai/v1/chat/completions"></option>
+        <option value="https://api.deepseek.com/v1/chat/completions"></option>
+        <option value="http://localhost:11434/v1/chat/completions"></option>
+      </datalist>
+      <div class="row">
+        <label>Nome do modelo
+          <input id="mModelo" placeholder="nvidia/nemotron-3.5-lightning:free" />
+        </label>
+        <label>Chave (opcional)
+          <input id="mChave" placeholder="vazio = usa a chave global" />
+        </label>
+      </div>
+      <label class="block">Observação
+        <input id="mNota" placeholder="bom pra código, porém lento" />
+      </label>
+      <div class="row between">
+        <span class="status" id="mStatus"></span>
+        <div class="row-actions">
+          <button class="ghost" id="mCancelar" type="button" style="display:none">cancelar edição</button>
+          <button class="primary" id="mSalvar" type="button">Salvar modelo</button>
+        </div>
+      </div>
+    </details>
+
+    <p class="hint">O <strong>nível</strong> é o que você espera do modelo: ⚡ rápido para o dia a dia,
+    ⚖️ equilibrado como padrão, 🧠 potente para tarefa difícil. Ele define a ordem das reservas
+    e ajuda a escolher de bate-pronto.</p>
   </div>
 </div>
 

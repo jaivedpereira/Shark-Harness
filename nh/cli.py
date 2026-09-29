@@ -198,6 +198,84 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_modelo(args: argparse.Namespace) -> int:
+    """Catálogo de modelos: listar, adicionar, escolher, testar e remover."""
+    from . import models
+
+    acao = getattr(args, "acao_modelo", "listar")
+
+    if acao == "listar":
+        itens = models.listar()
+        ativo = models.ativo()
+        if not itens:
+            print("nenhum modelo no catálogo — o chat usa o modelo global do config.\n")
+            print("adicione com:")
+            print("  nh modelo add --apelido 'Nemotron grátis' --nivel 1 \\")
+            print("      --url https://openrouter.ai/api/v1/chat/completions \\")
+            print("      --modelo nvidia/nemotron-3.5-lightning:free")
+            return 0
+        print(f"🧠 {len(itens)} modelo(s) no catálogo:\n")
+        for m in itens:
+            marca = " ← em uso" if ativo and ativo.get("id") == m["id"] else ""
+            chave = "com chave" if m["tem_chave"] else "⚠️ SEM CHAVE"
+            print(f"  {m['nivel_emoji']} {m['id']}  {m['apelido']}{marca}")
+            print(f"      {m['modelo']}")
+            print(f"      {m['url']}  ·  nível {m['nivel_nome']}  ·  {chave}")
+            if m.get("nota"):
+                print(f"      📝 {m['nota']}")
+            print()
+        if not ativo:
+            print("nenhum escolhido — o chat está usando o modelo global (nh config).")
+        return 0
+
+    if acao == "add":
+        try:
+            m = models.salvar({
+                "apelido": args.apelido, "url": args.url, "modelo": args.modelo,
+                "nivel": args.nivel, "nota": args.nota or "", "chave": args.chave or "",
+            })
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 1
+        print(f"✅ '{m['apelido']}' salvo no catálogo (nível {models.nivel_info(m['nivel'])['nome']}).")
+        print(f"   para usar: nh modelo usar {m['id']}")
+        return 0
+
+    if acao == "usar":
+        msg = models.definir_ativo(args.id or "")
+        print(msg)
+        return 0 if msg.startswith("✅") else 1
+
+    if acao == "remover":
+        msg = models.remover(args.id or "")
+        print(msg)
+        return 0 if msg.startswith("🗑️") else 1
+
+    if acao == "testar":
+        alvo = args.id or (models.ativo() or {}).get("id") or ""
+        if not alvo:
+            print("❌ informe o id: nh modelo testar <id>")
+            return 1
+        m = models.obter(alvo)
+        print(f"⏳ testando '{m.get('apelido') if m else alvo}' "
+              f"(3 perguntas simples, pode levar até ~100s)...\n")
+        r = models.testar(alvo)
+        if not r.get("ok"):
+            print(f"❌ {r.get('erro')}")
+            return 1
+        print(f"  {r['veredito']}")
+        print(f"  {r['acertos']}/{r['total']} · média {r['media_segundos']}s · "
+              f"total {r.get('segundos_total')}s\n")
+        for d in r.get("detalhes") or []:
+            print(f"  {'✓' if d['ok'] else '✗'} {d['segundos']:>6}s  {d['resposta'][:90]}")
+            if not d["ok"] and d.get("motivo"):
+                print(f"              ↳ {d['motivo']}")
+        return 0
+
+    print(f"❌ ação desconhecida: {acao}")
+    return 1
+
+
 def cmd_uso(args: argparse.Namespace) -> int:
     """Uso do modelo: tokens consumidos e custo estimado."""
     from . import usage
@@ -433,6 +511,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     d2 = sub.add_parser("doctor", help="diagnóstico do ambiente (testa escrita de arquivo de verdade)")
     d2.set_defaults(func=cmd_doctor)
+
+    # nh modelo — catálogo de modelos (vários endpoints e níveis)
+    mo = sub.add_parser("modelo", help="catálogo de modelos: listar, adicionar, escolher, testar")
+    mo.set_defaults(func=cmd_modelo)
+    mo_sub = mo.add_subparsers(dest="acao_modelo")
+    mo_sub.add_parser("listar", help="mostra o catálogo")
+    mo_add = mo_sub.add_parser("add", help="cadastra um modelo")
+    mo_add.add_argument("--apelido", required=True, help="nome que aparece na interface")
+    mo_add.add_argument("--url", required=True, help="endpoint completo do provedor")
+    mo_add.add_argument("--modelo", required=True, help="id do modelo naquele provedor")
+    mo_add.add_argument("--nivel", type=int, default=2, choices=[1, 2, 3],
+                        help="1 rápido · 2 equilibrado · 3 potente")
+    mo_add.add_argument("--chave", default="", help="opcional; vazio usa a chave global")
+    mo_add.add_argument("--nota", default="", help="observação livre")
+    mo_usar = mo_sub.add_parser("usar", help="escolhe o modelo do chat (vazio = global)")
+    mo_usar.add_argument("id", nargs="?", default="")
+    mo_rm = mo_sub.add_parser("remover", help="tira do catálogo")
+    mo_rm.add_argument("id")
+    mo_t = mo_sub.add_parser("testar", help="roda 3 perguntas e mede acerto e velocidade")
+    mo_t.add_argument("id", nargs="?", default="")
 
     u = sub.add_parser("uso", help="uso do modelo: tokens e custo estimado")
     u.add_argument("dias", nargs="?", type=int, default=30, help="janela em dias (padrão 30)")
