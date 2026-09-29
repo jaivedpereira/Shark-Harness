@@ -4,102 +4,54 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Shark Harness</title>
+<link rel="icon" href="/logo.jpg" />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
-<!-- ══ o tubarão ══ -->
-<svg class="defs" aria-hidden="true">
-  <defs>
-    <linearGradient id="sharkBody" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#7dd3fc"/>
-      <stop offset=".45" stop-color="#38bdf8"/>
-      <stop offset="1" stop-color="#1d4ed8"/>
-    </linearGradient>
-    <linearGradient id="sharkBelly" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#e8f6ff" stop-opacity=".9"/>
-      <stop offset="1" stop-color="#93c5fd" stop-opacity=".35"/>
-    </linearGradient>
-    <filter id="sharkGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="5" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-</svg>
-
 <div class="app">
 
-  <!-- ══ barra lateral ══ -->
+  <!-- ══════════ barra lateral ══════════ -->
   <aside class="side">
     <div class="brand">
-      <svg class="shark" viewBox="0 0 320 140" aria-label="Shark">
-        <g filter="url(#sharkGlow)">
-          <path class="fin-pect" d="M112 100 L96 128 L140 106 Z" fill="url(#sharkBody)"/>
-          <path d="M20 80 C40 62 80 48 128 47 L150 46 L170 24 L188 49 C214 53 236 60 252 70
-                   L296 42 L272 70 L300 100 L248 86 C222 102 182 110 140 108 C96 106 52 96 20 80 Z"
-                fill="url(#sharkBody)"/>
-          <path d="M56 92 C86 100 130 102 168 98 C140 106 96 106 56 92 Z" fill="url(#sharkBelly)"/>
-          <path d="M22 82 C44 92 74 96 100 94" stroke="#03101f" stroke-width="3" fill="none" stroke-linecap="round"/>
-          <g fill="#eaf6ff">
-            <path d="M34 86 l6 0 -3 7 z"/><path d="M48 89 l6 0 -3 7 z"/>
-            <path d="M62 92 l6 0 -3 7 z"/><path d="M76 93 l6 0 -3 7 z"/>
-          </g>
-          <circle cx="58" cy="70" r="7.5" fill="#03101f"/>
-          <circle cx="56" cy="68" r="2.6" fill="#8ee7ff"/>
-          <g stroke="#03101f" stroke-width="2.4" stroke-linecap="round" opacity=".8">
-            <path d="M120 62 C126 68 126 78 120 86"/>
-            <path d="M130 60 C136 67 136 78 130 87"/>
-            <path d="M140 60 C146 67 146 78 140 86"/>
-          </g>
-        </g>
-      </svg>
+      <img class="logo" src="/logo.jpg" alt="Shark Harness" />
       <div class="brand-text">
-        <h1>SHARK<span>HARNESS</span></h1>
-        <p>agente com tudo-é-plugin</p>
+        <h1>Shark Harness</h1>
+        <p>agente tudo-é-plugin</p>
       </div>
     </div>
 
     <nav class="nav" id="nav">
-      <button class="nav-item active" data-view="chat">💬 <span>Agente</span></button>
-      <button class="nav-item" data-view="tools">🧰 <span>Ferramentas</span></button>
-      <button class="nav-item" data-view="cron">⏰ <span>Agendador</span></button>
-      <button class="nav-item" data-view="audit">📜 <span>Auditoria</span></button>
-      <button class="nav-item" data-view="sys">🖥️ <span>Sistema</span></button>
+      <button class="nav-item active" data-view="chat">Agente</button>
+      <button class="nav-item" data-view="tools">Ferramentas</button>
+      <button class="nav-item" data-view="cron">Agendador</button>
+      <button class="nav-item" data-view="audit">Auditoria</button>
+      <button class="nav-item" data-view="sys">Sistema</button>
+      <button class="nav-item" data-view="config">Configurações</button>
     </nav>
 
-    <div class="pills" id="pills">
-      <span class="pill" id="pillPlat">—</span>
-      <span class="pill" id="pillTools">—</span>
-      <span class="pill" id="pillRisk">—</span>
-    </div>
     <div class="side-foot">
-      <span id="llmState" class="dot warn"></span><span id="llmText">verificando LLM…</span>
+      <div class="line" id="pillPlat">—</div>
+      <div class="line" id="pillTools">—</div>
+      <div class="line llm" id="llmLine"><span class="dot" id="llmState"></span><span id="llmText">verificando…</span></div>
     </div>
-    <div class="wave"></div>
   </aside>
 
-  <!-- ══ conteúdo ══ -->
+  <!-- ══════════ conteúdo ══════════ -->
   <main class="main">
 
-    <!-- Agente -->
+    <!-- ── Agente ── -->
     <section class="view active" id="view-chat">
-      <div class="watermark" id="wm" aria-hidden="true">
-        <svg viewBox="0 0 320 140">
-          <path d="M112 100 L96 128 L140 106 Z" fill="#38bdf8"/>
-          <path d="M20 80 C40 62 80 48 128 47 L150 46 L170 24 L188 49 C214 53 236 60 252 70
-                   L296 42 L272 70 L300 100 L248 86 C222 102 182 110 140 108 C96 106 52 96 20 80 Z" fill="#38bdf8"/>
-        </svg>
-      </div>
       <header class="vhead">
         <h2>Agente</h2>
-        <p>Descreva a tarefa. O tubarão escolhe as ferramentas, executa e mostra cada passo.</p>
+        <p>Descreva a tarefa. Ele escolhe as ferramentas, executa e mostra cada passo.</p>
       </header>
       <div class="chat" id="chat">
         <div class="msg bot">
           <div class="bubble">
-            <strong>🦈 Shark Harness pronto.</strong>
+            <strong>Pronto.</strong>
             <p>Peça algo como “checa o sistema e cria um backup do workspace”, ou
-            “agenda um job pra rodar de hora em hora e me avisar”.</p>
+            “agenda um job pra rodar de hora em hora”.</p>
           </div>
         </div>
       </div>
@@ -111,11 +63,11 @@
       </div>
       <form class="composer" id="formAgent">
         <textarea id="prompt" rows="1" placeholder="O que eu faço agora, chefe?"></textarea>
-        <button class="send" type="submit">Enviar ▸</button>
+        <button class="primary" type="submit">Enviar</button>
       </form>
     </section>
 
-    <!-- Ferramentas -->
+    <!-- ── Ferramentas ── -->
     <section class="view" id="view-tools">
       <header class="vhead">
         <h2>Ferramentas</h2>
@@ -125,20 +77,20 @@
         <input id="toolSearch" placeholder="filtrar ferramentas…" />
         <div class="chips" id="riskChips">
           <button class="chip active" data-risk="all">todas</button>
-          <button class="chip" data-risk="safe">🟢 leitura</button>
-          <button class="chip" data-risk="write">🟡 escreve</button>
-          <button class="chip" data-risk="exec">🟠 executa</button>
-          <button class="chip" data-risk="danger">🔴 apaga</button>
+          <button class="chip" data-risk="safe">leitura</button>
+          <button class="chip" data-risk="write">escreve</button>
+          <button class="chip" data-risk="exec">executa</button>
+          <button class="chip" data-risk="danger">apaga</button>
         </div>
       </div>
       <div class="grid" id="toolGrid"></div>
     </section>
 
-    <!-- Agendador -->
+    <!-- ── Agendador ── -->
     <section class="view" id="view-cron">
       <header class="vhead">
         <h2>Agendador</h2>
-        <p>Tarefas recorrentes que o tubarão executa sozinho, no horário definido.</p>
+        <p>Tarefas recorrentes que o harness executa sozinho, no horário definido.</p>
       </header>
       <div class="card">
         <h3>Nova tarefa</h3>
@@ -148,21 +100,24 @@
         </div>
         <div class="row">
           <label>Tipo
-            <select id="cKind"><option value="shell">comando de shell</option><option value="tool">ferramenta do harness</option></select>
+            <select id="cKind">
+              <option value="shell">comando de shell</option>
+              <option value="tool">ferramenta do harness</option>
+            </select>
           </label>
           <label id="wrapPayload">Comando<input id="cPayload" placeholder="tar -czf ~/bkp.tgz ~/shark-workspace" /></label>
         </div>
-        <label class="args" id="wrapArgs" style="display:none">Argumentos JSON<input id="cArgs" placeholder='{"linhas": 20}' /></label>
+        <label class="args" id="wrapArgs">Argumentos JSON<input id="cArgs" placeholder='{"linhas": 20}' /></label>
         <div class="row between">
           <button class="ghost" id="cExplain" type="button">Traduzir o cron</button>
-          <button class="primary" id="cAdd" type="button">Agendar ▸</button>
+          <button class="primary" id="cAdd" type="button">Agendar</button>
         </div>
         <p class="hint" id="cHint"></p>
       </div>
       <div id="jobList" class="joblist"></div>
     </section>
 
-    <!-- Auditoria -->
+    <!-- ── Auditoria ── -->
     <section class="view" id="view-audit">
       <header class="vhead">
         <h2>Auditoria</h2>
@@ -171,16 +126,74 @@
       <div class="tablewrap"><table id="auditTable"><tbody></tbody></table></div>
     </section>
 
-    <!-- Sistema -->
+    <!-- ── Sistema ── -->
     <section class="view" id="view-sys">
-      <header class="vhead"><h2>Sistema</h2><p>Saúde do dispositivo onde o tubarão está rodando.</p></header>
+      <header class="vhead"><h2>Sistema</h2><p>Saúde do dispositivo onde o harness está rodando.</p></header>
       <pre class="pre" id="sysInfo">carregando…</pre>
+    </section>
+
+    <!-- ── Configurações (chave do LLM) ── -->
+    <section class="view" id="view-config">
+      <header class="vhead">
+        <h2>Configurações</h2>
+        <p>Ligue o agente escolhendo o provedor e colando sua chave. Fica salvo só na sua máquina.</p>
+      </header>
+
+      <div class="card">
+        <h3>Provedor de IA</h3>
+        <div class="row">
+          <label>Provedor
+            <select id="cfgProvider"></select>
+          </label>
+          <label>Modelo
+            <input id="cfgModel" list="cfgModels" placeholder="nome do modelo" />
+            <datalist id="cfgModels"></datalist>
+          </label>
+        </div>
+        <p class="hint" id="cfgHint"></p>
+
+        <label class="block">URL do endpoint
+          <input id="cfgUrl" placeholder="https://…/chat/completions" />
+        </label>
+
+        <label class="block">Chave da API
+          <input id="cfgKey" type="password" placeholder="cole sua chave aqui" autocomplete="off" />
+        </label>
+
+        <div class="row">
+          <label>Risco máximo exposto à IA
+            <select id="cfgRisk">
+              <option value="safe">safe — só leitura</option>
+              <option value="write">write — escreve arquivo/tarefa</option>
+              <option value="exec">exec — executa comando (padrão)</option>
+              <option value="danger">danger — pode apagar arquivo</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row between">
+          <span class="status" id="cfgStatus"></span>
+          <div class="row-actions">
+            <button class="ghost" id="cfgTest" type="button">Testar conexão</button>
+            <button class="ghost" id="cfgRemoveKey" type="button">Remover chave</button>
+            <button class="primary" id="cfgSave" type="button">Salvar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Onde está salvo</h3>
+        <p class="mdesc" id="cfgWhere">—</p>
+        <p class="hint">A chave nunca é devolvida inteira para a tela: mostramos só o começo e o fim.
+        O arquivo fica com permissão restrita (só o seu usuário lê). Você também pode usar a
+        variável de ambiente <code>SHARK_LLM_KEY</code> — ela tem prioridade sobre o que for salvo aqui.</p>
+      </div>
     </section>
 
   </main>
 </div>
 
-<!-- ══ modal de ferramenta ══ -->
+<!-- ══════════ modal de ferramenta ══════════ -->
 <div class="modal" id="modal">
   <div class="modal-card">
     <header>
@@ -191,7 +204,7 @@
     <div class="mform" id="mForm"></div>
     <div class="row between">
       <span class="mrisk" id="mRisk"></span>
-      <button class="primary" id="mRun">Executar ▸</button>
+      <button class="primary" id="mRun">Executar</button>
     </div>
     <pre class="pre out" id="mOut">(sem saída ainda)</pre>
   </div>

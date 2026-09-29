@@ -14,14 +14,15 @@ import json
 import os
 import secrets
 import threading
+import urllib.error
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import agent, scheduler
+from . import agent, providers, scheduler
 from .core import Registry, load_plugins
 from .guard import AUDIT_FILE
-from .paths import env, platform_name
+from .paths import CONFIG_FILE, env, platform_name, read_config, update_config
 
 WEBUI = Path(__file__).parent / "webui"
 
@@ -38,6 +39,16 @@ MIME = {
     ".js": "application/javascript; charset=utf-8",
     ".svg": "image/svg+xml",
     ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+}
+
+# só estes arquivos da pasta webui podem ser servidos (nada de path traversal)
+ESTATICOS = {
+    "/", "/index.html", "/style.css", "/app.js",
+    "/logo.jpg", "/logo.png", "/favicon.ico",
 }
 
 
@@ -97,14 +108,16 @@ class Handler(BaseHTTPRequestHandler):
         from urllib.parse import urlparse
 
         rota = urlparse(self.path).path
-        if rota in ("/", "/index.html"):
-            return self._file("index.html")
-        if rota in ("/style.css", "/app.js"):
-            return self._file(rota.lstrip("/"))
+        if rota in ESTATICOS:
+            return self._file("index.html" if rota == "/" else rota.lstrip("/"))
         if rota == "/api/state":
             if not self._autorizado():
                 return self._json({"error": "token inválido"}, 401)
             return self._json(self._estado())
+        if rota == "/api/config":
+            if not self._autorizado():
+                return self._json({"error": "token inválido"}, 401)
+            return self._json(self._config_atual())
         return self._json({"error": "rota desconhecida"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -122,7 +135,125 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"result": self._cron(body)})
         if rota == "/api/agent":
             return self._json(self._agente(body.get("prompt", "")))
+        if rota == "/api/config":
+            return self._json(self._salvar_config(body))
+        if rota == "/api/config/testar":
+            return self._json(self._testar_llm())
         return self._json({"error": "rota desconhecida"}, 404)
+
+    # -------------------------------------------------------------- config LLM
+    def _config_atual(self) -> dict:
+        """Estado da configuração. A CHAVE NUNCA volta inteira — só um vislumbre."""
+        cfg = read_config()
+        chave = env("LLM_KEY")
+        url = env("LLM_URL", agent.DEFAULT_URL)
+        modelo = env("LLM_MODEL", agent.DEFAULT_MODEL)
+        provider = cfg.get("provider") or providers.detectar(url)
+        info = providers.achar(provider)
+        return {
+            "providers": providers.listar(),
+            "atual": {
+                "provider": provider,
+                "label": (info or {}).get("label", "Personalizado"),
+                "url": url,
+                "model": modelo,
+                "max_risk": env("MAX_RISK", self.max_risk),
+                "tem_chave": bool(chave),
+                # vislumbre: primeiros 6 e últimos 4 caracteres
+                "chave_dica": (chave[:6] + "…" + chave[-4:]) if len(chave) > 12 else ("definida" if chave else ""),
+                "origem": "ambiente" if (os.environ.get("SHARK_LLM_KEY") or os.environ.get("NH_LLM_KEY")) else ("arquivo" if cfg.get("llm_key") else ""),
+            },
+            "arquivo": str(CONFIG_FILE),
+        }
+
+    def _salvar_config(self, body: dict) -> dict:
+        """Grava provedor/modelo/chave no config.json (permissão 600)."""
+        provider = str(body.get("provider") or "").strip()
+        url = str(body.get("url") or "").strip()
+        modelo = str(body.get("model") or "").strip()
+        chave = body.get("api_key")
+        risco = str(body.get("max_risk") or "").strip()
+
+        info = providers.achar(provider)
+        if info and not url:
+            url = info["url"]  # preenche a URL do provedor escolhido
+
+        if not url:
+            return {"ok": False, "erro": "informe a URL do provedor (ou escolha um da lista)."}
+        if not url.startswith(("http://", "https://")):
+            return {"ok": False, "erro": "a URL precisa começar com http:// ou https://"}
+        if not modelo:
+            return {"ok": False, "erro": "informe o nome do modelo."}
+        if risco and risco not in ("safe", "write", "exec", "danger"):
+            return {"ok": False, "erro": "risco inválido (use safe, write, exec ou danger)."}
+
+        campos = {
+            "provider": provider or providers.detectar(url),
+            "llm_url": url,
+            "llm_model": modelo,
+        }
+        if risco:
+            campos["max_risk"] = risco
+        # chave vazia = "não mexi na chave"; "remover" limpa; string nova grava
+        if isinstance(chave, str) and chave.strip() and chave.strip() != "••••":
+            campos["llm_key"] = chave.strip()
+        elif chave == "remover":
+            campos["llm_key"] = None
+
+        try:
+            update_config(**campos)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "erro": f"não consegui gravar: {exc}"}
+
+        # o agente lê env() a cada chamada, então já vale sem reiniciar
+        aviso = ""
+        if os.environ.get("SHARK_LLM_KEY") or os.environ.get("NH_LLM_KEY"):
+            aviso = ("Atenção: existe uma variável de ambiente LLM_KEY definida — "
+                     "ela tem prioridade sobre o que você salvou aqui.")
+        return {
+            "ok": True,
+            "msg": f"✅ configuração salva em {CONFIG_FILE}",
+            "aviso": aviso,
+            "atual": self._config_atual()["atual"],
+        }
+
+    def _testar_llm(self) -> dict:
+        """Faz uma chamada mínima ao provedor para validar URL + chave + modelo."""
+        url = env("LLM_URL", agent.DEFAULT_URL)
+        modelo = env("LLM_MODEL", agent.DEFAULT_MODEL)
+        chave = env("LLM_KEY")
+        try:
+            resp = agent._post(
+                url,
+                {
+                    "model": modelo,
+                    "messages": [{"role": "user", "content": "responda apenas: ok"}],
+                    "max_tokens": 5,
+                },
+                chave,
+                timeout=45,
+            )
+        except urllib.error.HTTPError as exc:
+            corpo = exc.read().decode("utf-8", "replace")[:200]
+            dica = ""
+            if exc.code in (401, 403):
+                dica = " — a chave parece inválida ou sem permissão."
+            elif exc.code == 402:
+                dica = " — a conta está sem saldo."
+            elif exc.code == 404:
+                dica = " — confira o nome do modelo nesse provedor."
+            elif exc.code == 429:
+                dica = " — rate-limit do provedor, tente de novo em instantes."
+            return {"ok": False, "erro": f"HTTP {exc.code}: {corpo}{dica}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
+
+        resposta = ""
+        try:
+            resposta = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        except Exception:  # noqa: BLE001
+            pass
+        return {"ok": True, "msg": f"✅ conexão OK — o modelo respondeu: “{str(resposta).strip()[:40]}”"}
 
     # ----------------------------------------------------------------- estado
     def _estado(self) -> dict:

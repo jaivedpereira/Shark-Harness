@@ -82,14 +82,37 @@ nh web --all                 # expõe na rede local (pede token, impresso no ter
 nh web --risk safe           # interface só com ferramentas de leitura
 ```
 
-Cinco telas:
+Seis telas:
 - **Agente** — chat com o LLM; cada ferramenta chamada aparece como um cartão
-  (🔧 nome + argumentos) e o resultado é clicável para expandir
-- **Ferramentas** — os 29 cards com badge de risco; clicar abre um **formulário
+  (→ nome + argumentos) e o resultado é clicável para expandir
+- **Ferramentas** — os 29 cards com etiqueta de risco; clicar abre um **formulário
   gerado do JSON Schema** e executa de verdade
 - **Agendador** — criar/pausar/rodar/remover tarefas, com tradutor de cron
 - **Auditoria** — tudo que foi executado, com segredos mascarados
 - **Sistema** — RAM, disco, bateria, uptime do aparelho
+- **Configurações** — ligar a IA sem mexer em arquivo (ver abaixo)
+
+### 🔑 Configurar a IA pela interface (sem editar arquivo)
+
+Na aba **Configurações** você escolhe o provedor, cola a chave e clica em **Salvar**.
+O **Testar conexão** faz uma chamada real ao provedor e diz exatamente o que está
+errado (chave inválida, sem saldo, modelo inexistente, rate-limit).
+
+Provedores já cadastrados (a URL é preenchida sozinha):
+
+| provedor | chave grátis? | observação |
+|---|---|---|
+| **OpenRouter** | ✅ tem modelos `:free` | default; o link "pegar chave" abre a página certa |
+| **Groq** | ✅ tier gratuito | bem rápido |
+| **DeepSeek** | ❌ exige saldo | ótimo em código |
+| **OpenCode Zen** | ⚠️ | os `:free` só funcionam dentro do próprio OpenCode |
+| **Ollama** | ✅ **100% local** | não precisa de chave — rode `ollama pull llama3.2` |
+| **Personalizado** | — | qualquer endpoint OpenAI-compatível |
+
+O que é salvo vai para `~/.shark-harness/config.json` (permissão `600`, só o seu
+usuário lê). **A chave nunca volta inteira para a tela** — a interface mostra apenas
+o começo e o fim (`sk-or-…8469`). Você também pode usar a variável de ambiente
+`SHARK_LLM_KEY`, que tem prioridade sobre o arquivo.
 
 Zero dependências: o servidor usa `http.server` da stdlib. Local por padrão; se
 você expõe na rede (`--all`), ele exige um token gerado na hora.
