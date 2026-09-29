@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shark-harness"
+version = "0.1.0"
+description = "🦈 Agente de tarefas com arquitetura tudo-é-plugin: shell, arquivos, código, agendamento, controle do dispositivo e interface web."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+# núcleo sem dependências: roda no Termux com só o Python
+dependencies = []
+
+[project.optional-dependencies]
+# só no PC/servidor — no Termux o SDK do MCP não instala (rpds-py precisa de Rust)
+mcp = ["mcp[cli]>=2.0"]
+
+[project.scripts]
+nh = "nh.cli:main"
+shark = "nh.cli:main"
+
+[tool.setuptools]
+packages = ["nh", "nh.plugins"]
+
+[tool.setuptools.package-data]
+nh = ["webui/*"]
