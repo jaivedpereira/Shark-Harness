@@ -13,7 +13,10 @@ visual** e as ideias são deles:
 
 | o que foi aproveitado | de onde (MIT) |
 |---|---|
-| **Tokens em três camadas**: primitivo → alias semântico → específico | `packages/client/ui-primitives` |
+| **Paleta completa + tokens em três camadas** (`design-platform.css`, 382 variáveis, valores reais) | `packages/client/ui-theme/src/styles/` |
+| Escala de raio (4/8/12/16/20/28), movimento (`--ds-ease-in-out`) e pilha de fontes (`--dsw-font-family*`) | `ui-theme/src/styles/base.css` |
+| **Barra de rolagem temática de 5px + o portão `@supports not selector(::-webkit-scrollbar)`** | `ui-theme/src/styles/scrollbar.css` |
+| Anel de foco de 2px, suprimido no clique de mouse | `ui-theme/src/styles/focus.css` |
 | Nomes de token `--dsw-alias-*` / `--ds-*` mantidos iguais aos deles, de propósito | idem |
 | **Pílula** de 24px, com anel interno (e não borda) no estado ativo | `Pill.module.css` |
 | **Seletor segmentado** com indicador deslizante calculado só por CSS | `SegmentedControl.module.css` |
