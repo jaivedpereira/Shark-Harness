@@ -49,9 +49,17 @@ def nivel_info(nivel) -> dict:
 
 
 # ------------------------------------------------------------------ leitura ---
-def listar(incluir_sensiveis: bool = False) -> list[dict]:
-    """Todos os modelos cadastrados, ordenados por nível e depois por nome."""
+def listar(incluir_sensiveis: bool = False, id_ativo: str = "") -> list[dict]:
+    """Todos os modelos cadastrados, ordenados por nível e depois por nome.
+
+    `id_ativo` marca qual está em uso. Se não vier, o próprio catálogo descobre —
+    assim quem chama não precisa lembrar de passar, e a interface sempre recebe
+    a marcação (era exatamente isso que faltava para a troca "funcionar").
+    """
     itens = read_config().get("modelos") or []
+    if not id_ativo:
+        atual = ativo()
+        id_ativo = str((atual or {}).get("id") or "")
     if not isinstance(itens, list):
         return []
     saida = []
@@ -63,6 +71,13 @@ def listar(incluir_sensiveis: bool = False) -> list[dict]:
         m["nivel"] = int(m.get("nivel") or 2)
         m["nivel_nome"] = info["nome"]
         m["nivel_emoji"] = info["emoji"]
+        # O bug que fazia a troca de modelo "não funcionar": a lista nunca dizia qual
+        # estava em uso, então a interface não tinha como destacar o ativo nem
+        # confirmar a troca. Quem sabe a resposta é o próprio catálogo — então ele
+        # marca aqui, e os dois nomes (`ativo` e `em_uso`) cobrem o que a interface usa.
+        eu_sou_o_ativo = bool(id_ativo) and str(m.get("id") or "") == str(id_ativo)
+        m["ativo"] = eu_sou_o_ativo
+        m["em_uso"] = eu_sou_o_ativo
         # a chave nunca sai inteira: só o suficiente para o usuário reconhecer
         chave = str(m.get("chave") or "")
         m["tem_chave_propria"] = bool(chave)
@@ -72,7 +87,13 @@ def listar(incluir_sensiveis: bool = False) -> list[dict]:
             m["chave"] = ""
             m["chave_mascarada"] = mascarar(chave)
         saida.append(m)
-    saida.sort(key=lambda x: (x["nivel"], str(x.get("apelido") or "").lower()))
+    # NÃO ordenar por nível aqui. A ordem devolvida é a ORDEM DE PRIORIDADE — a
+    # mesma que `reservas()` percorre quando o modelo principal falha. Ordenar por
+    # nível fazia o botão ↑/↓ do catálogo não mexer nada na tela (mexia só nas
+    # reservas, por baixo), o que parecia bug para quem clicava.
+    # A interface agrupa por nível na hora de exibir, então nada se perde.
+    for pos, item in enumerate(saida, start=1):
+        item["posicao"] = pos      # 1 = primeira tentativa entre as reservas
     return saida
 
 
@@ -148,6 +169,66 @@ def salvar(dados: dict) -> dict:
 
     update_config(modelos=itens)
     return registro
+
+
+def mover(mid: str, direcao: str) -> str:
+    """Sobe ou desce um modelo na ordem do catálogo.
+
+    A ordem importa de verdade: `reservas()` atende na sequência em que os modelos
+    aparecem, então mover para cima é "tente este antes daquele" quando o principal
+    falha. Sem isto, a única forma de mudar a prioridade era apagar e recadastrar.
+    """
+    dados = read_config()
+    itens = dados.get("modelos") or []
+    if not isinstance(itens, list):
+        return "⚠️ catálogo inválido."
+    pos = next((i for i, m in enumerate(itens)
+                if isinstance(m, dict) and str(m.get("id")) == str(mid)), None)
+    if pos is None:
+        return "❌ modelo não encontrado."
+    passo = -1 if direcao in ("subir", "cima", "up") else 1
+    alvo = pos + passo
+    if alvo < 0 or alvo >= len(itens):
+        return "⚠️ já está no fim da lista."
+    itens[pos], itens[alvo] = itens[alvo], itens[pos]
+    # update_config (não write_config): é o nome que este módulo importa, e ele
+    # grava preservando os outros campos do config
+    update_config(modelos=itens)
+    apelido = itens[alvo].get("apelido") or itens[alvo].get("modelo")
+    return f"✅ '{apelido}' {'subiu' if passo < 0 else 'desceu'} na ordem das reservas."
+
+
+def duplicar(mid: str) -> dict:
+    """Cria uma cópia de um modelo, para variar sem digitar tudo de novo.
+
+    Útil quando o mesmo provedor serve vários modelos: duplica, troca o nome e a
+    chave fica a mesma.
+    """
+    import uuid as _uuid
+
+    original = obter(mid)
+    if not original:
+        return {"ok": False, "erro": "modelo não encontrado"}
+    novo = dict(original)
+    novo["id"] = _uuid.uuid4().hex[:8]
+    novo["apelido"] = f"{original.get('apelido') or 'modelo'} (cópia)"
+    itens = list(read_config().get("modelos") or [])
+    itens.append(novo)
+    update_config(modelos=itens)
+    return {"ok": True, "modelo": mascarar_modelo(novo),
+            "msg": f"✅ cópia criada: '{novo['apelido']}'"}
+
+
+def mascarar_modelo(m: dict) -> dict:
+    """Um modelo pronto para ir à interface, com a chave escondida."""
+    m = dict(m)
+    info = nivel_info(m.get("nivel"))
+    m["nivel"] = int(m.get("nivel") or 2)
+    m["nivel_nome"] = info["nome"]
+    m["nivel_emoji"] = info["emoji"]
+    m["tem_chave"] = tem_chave(m)
+    m["chave"] = ""
+    return m
 
 
 def remover(mid: str) -> str:

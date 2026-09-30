@@ -15,6 +15,7 @@ import os
 import queue
 import secrets
 import threading
+import time
 import urllib.error
 import webbrowser
 from urllib.parse import unquote
@@ -57,6 +58,10 @@ ESTATICOS = {
 
 
 class Handler(BaseHTTPRequestHandler):
+    # cache de sysinfo (compartilhado por todas as requisições — o servidor é
+    # threaded, então é de propósito que estes vivem na classe, não por instância)
+    _sysinfo: dict = {}
+    _sysinfo_em: float = 0.0
     reg: Registry
     token: str = ""
     max_risk: str = "exec"
@@ -249,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
 
         atual = models.ativo()
         return {
-            "modelos": models.listar(),
+            "modelos": models.listar(id_ativo=str((atual or {}).get("id") or "")),
             "niveis": [{"nivel": n, **info} for n, info in models.NIVEIS.items()],
             "ativo": atual.get("id") if atual else "",
             "provedores": providers.listar(),
@@ -295,7 +300,21 @@ class Handler(BaseHTTPRequestHandler):
                 return {"ok": msg.startswith("🗑️"), "msg": msg, "lista": self._modelos()}
             if acao == "ativar":
                 msg = models.definir_ativo(str(body.get("id") or ""))
+                ok = msg.startswith("✅")
+                aviso = ""
+                if ok:
+                    alvo = models.obter(str(body.get("id") or ""))
+                    if alvo and not models.tem_chave(alvo):
+                        aviso = (" ⚠️ sem chave: este modelo não vai responder até você "
+                                 "colar uma chave (a do Ajustes não vale se for de outro provedor).")
+                return {"ok": ok, "msg": msg + aviso, "lista": self._modelos()}
+            if acao == "mover":
+                msg = models.mover(str(body.get("id") or ""), str(body.get("direcao") or "subir"))
                 return {"ok": msg.startswith("✅"), "msg": msg, "lista": self._modelos()}
+            if acao == "duplicar":
+                r = models.duplicar(str(body.get("id") or ""))
+                return {"ok": bool(r.get("ok")), "msg": r.get("msg") or r.get("erro"),
+                        "lista": self._modelos()}
             if acao == "testar":
                 r = models.testar(str(body.get("id") or ""))
                 return {"ok": bool(r.get("ok")), "teste": r,
@@ -696,13 +715,92 @@ class Handler(BaseHTTPRequestHandler):
             "plugins": self._plugins_resumo(),
             "jobs": jobs,
             "audit": audit,
-            "sysinfo": self.reg.dispatch("sysinfo_report", {}),
-            "llm": {
-                "url": env("LLM_URL", agent.DEFAULT_URL),
-                "model": env("LLM_MODEL", agent.DEFAULT_MODEL),
-                "configured": bool(env("LLM_KEY")),
-            },
+            "sysinfo": self._sysinfo_cacheado(),
+            "sysinfo_metricas": self._metricas_do_sysinfo(self._sysinfo_cacheado()),
+            # O EFETIVO, não o global: se o catálogo tem um modelo ativo, é ELE que
+            # roda — antes este bloco mostrava sempre o global e a tela ficava
+            # mentindo depois de trocar de modelo (parecia que a troca não pegava).
+            "llm": self._llm_efetivo(),
         }
+
+    def _llm_efetivo(self) -> dict:
+        """Qual modelo REALMENTE roda agora, venha do catálogo ou do global."""
+        from . import models
+
+        base = {
+            "url": env("LLM_URL", agent.DEFAULT_URL),
+            "model": env("LLM_MODEL", agent.DEFAULT_MODEL),
+            "configured": bool(env("LLM_KEY", "")),
+            "origem": "global",
+        }
+        try:
+            atual = models.ativo()
+        except Exception:  # noqa: BLE001
+            atual = None
+        if atual:
+            base.update({
+                "url": atual.get("url") or base["url"],
+                "model": atual.get("modelo") or base["model"],
+                "configured": models.tem_chave(atual),
+                "origem": "catalogo",
+                "apelido": atual.get("apelido") or "",
+                "nivel": int(atual.get("nivel") or 2),
+            })
+        return base
+
+    @staticmethod
+    def _metricas_do_sysinfo(texto: str) -> dict:
+        """Tira os números do relatório de texto do sysinfo_report.
+
+        O plugin devolve um relatório legível, não dados estruturados — bom para o
+        agente ler, ruim para a barra lateral desenhar. Como o formato é nosso e
+        estável, extrair aqui (uma vez, com cache) é mais barato que arrumar o
+        plugin e mexer no que o agente já recebe.
+        """
+        import re as _re
+
+        t = str(texto or "")
+        m = {}
+        ram = _re.search(r"RAM\s*:\s*([\d.,]+)\s*(\w+)\s+usados?\s+de\s+([\d.,]+)\s*(\w+)\s*\((\d+)%\)", t)
+        if ram:
+            m["ram_pct"] = int(ram.group(5))
+            m["ram_usado"] = f"{ram.group(1)}{ram.group(2)}"
+            m["ram_total"] = f"{ram.group(3)}{ram.group(4)}"
+        disco = _re.search(r"disco[^:]*:\s*([\d.,]+)\s*(\w+)\s+usados?\s+de\s+([\d.,]+)\s*(\w+)"
+                           r"(?:\s*\(([\d.,]+)\s*(\w+)\s+livres\))?", t)
+        if disco:
+            try:
+                usado = float(disco.group(1).replace(",", "."))
+                total = float(disco.group(3).replace(",", "."))
+                if total:
+                    m["disco_pct"] = round(usado / total * 100)
+            except ValueError:
+                pass
+            m["disco_usado"] = f"{disco.group(1)}{disco.group(2)}"
+            m["disco_total"] = f"{disco.group(3)}{disco.group(4)}"
+            if disco.group(5):
+                m["disco_livre"] = f"{disco.group(5)}{disco.group(6)}"
+        up = _re.search(r"uptime\s*:\s*(\S+)", t)
+        if up:
+            m["uptime"] = up.group(1)
+        return m
+
+    def _sysinfo_cacheado(self) -> dict:
+        """RAM/disco/etc com cache curto.
+
+        A interface consulta o estado a cada 20s; rodar `sysinfo_report` (que toca o
+        disco e lê /proc) a cada consulta é desperdício. 30 segundos já é fresco o
+        bastante para um painel.
+        """
+        agora = time.time()
+        if self._sysinfo and (agora - self._sysinfo_em) < 30:
+            return self._sysinfo
+        try:
+            self._sysinfo = self.reg.dispatch("sysinfo_report", {})
+            self._sysinfo_em = agora
+        except Exception:  # noqa: BLE001
+            self._sysinfo = self._sysinfo or {}
+        return self._sysinfo
 
     def _plugins_resumo(self) -> list[dict]:
         """Todos os plugins (embutidos + instalados) com o estado ligado/desligado."""

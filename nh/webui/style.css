@@ -1565,3 +1565,136 @@ button:disabled{opacity:.5;cursor:not-allowed}
   .sh-shimmer .sh-shimmer-varre{animation:none;opacity:0}
   .turn.destacado{animation:none}
 }
+
+/* ══════════════════════════════════════════════════════════════
+   TROCA RÁPIDA DE MODELO (menu do topo do chat)
+   ══════════════════════════════════════════════════════════════ */
+.modelo-wrap{position:relative;display:inline-flex}
+.modelo-wrap .caret{font-size:9px;opacity:.6;margin-left:2px}
+#btnModelo[aria-expanded="true"]{
+  border-color:var(--dsw-alias-button-ghost-active-border);
+  background:var(--dsw-alias-interactive-bg-hover);
+}
+#btnModelo.alerta{border-color:var(--dsw-alias-state-warn-primary)}
+
+.modelo-menu{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:60;
+  min-width:280px;max-width:min(360px,92vw);max-height:min(420px,60vh);overflow-y:auto;
+  padding:6px;
+  background:var(--dsw-alias-bg-layer-2);
+  border:1px solid var(--dsw-alias-border-l3);
+  border-radius:var(--dsw-radius-lg);
+  box-shadow:var(--dsw-elevation-prominent);
+  animation:sh-menu-entra var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+@keyframes sh-menu-entra{from{opacity:0;transform:translateY(-4px)}}
+.modelo-menu .mm-grupo{
+  font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--dsw-alias-label-caption);padding:8px 9px 4px;
+}
+.modelo-menu .mm-item{
+  display:grid;grid-template-columns:1fr auto;grid-template-areas:"nome tag" "sub tag";
+  gap:0 8px;width:100%;text-align:left;padding:7px 9px;
+  border-radius:var(--dsw-radius-sm);background:none;border:0;font:inherit;cursor:pointer;
+  transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.modelo-menu .mm-item:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.modelo-menu .mm-item.em-uso{background:var(--dsw-alias-state-success-tertiary)}
+.modelo-menu .mm-nome{
+  grid-area:nome;font-size:12.5px;color:var(--dsw-alias-label-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.modelo-menu .mm-sub{
+  grid-area:sub;font-size:10.5px;color:var(--dsw-alias-label-tertiary);
+  font-family:var(--ds-font-family-code);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.modelo-menu .mm-item .rtag{grid-area:tag;align-self:center}
+.modelo-menu .mm-gerenciar{
+  display:block;width:100%;text-align:left;margin-top:4px;padding:8px 9px;
+  border:0;border-top:1px solid var(--dsw-alias-border-l1);
+  border-radius:0 0 var(--dsw-radius-sm) var(--dsw-radius-sm);
+  background:none;font:inherit;font-size:12px;cursor:pointer;
+  color:var(--dsw-alias-label-secondary);
+}
+.modelo-menu .mm-gerenciar:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.modelo-menu .mm-vazio{padding:12px 10px;font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.5}
+.modelo-menu .mm-vazio span{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.modelo-menu .mm-erro{padding:12px 10px;font-size:12px;color:var(--dsw-alias-state-error-primary)}
+.modelo-menu .mm-carregando{padding:12px 10px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+
+/* botão flutuante de "ir para o fim" */
+.sh-ir-fim{
+  position:absolute;right:18px;bottom:104px;z-index:35;
+  width:34px;height:34px;border-radius:50%;display:none;align-items:center;justify-content:center;
+  background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l3);
+  color:var(--dsw-alias-label-secondary);font-size:14px;cursor:pointer;
+  box-shadow:var(--dsw-elevation-soft);
+}
+.sh-ir-fim.visivel{display:flex}
+.sh-ir-fim:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
+
+/* faixa de aviso quando o servidor cai */
+.sh-offline{
+  display:none;align-items:center;gap:8px;padding:7px 13px;font-size:12px;
+  background:var(--dsw-alias-state-danger-fill);color:var(--dsw-alias-state-error-primary);
+  border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 25%, transparent);
+}
+.sh-offline.visivel{display:flex}
+
+/* busca dentro da conversa */
+/* o [hidden] do navegador é mais fraco que uma classe com display:flex, então
+   sem esta linha a barra de busca aparecia antes de você clicar em 🔍 */
+.sh-busca-chat{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex:none}
+.sh-busca-chat[hidden]{display:none}
+.sh-busca-chat input{flex:1}
+.sh-busca-chat .contagem{font-size:11.5px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.marca-busca{background:var(--dsw-alias-state-warn-fill);border-radius:3px;box-shadow:0 0 0 1px var(--dsw-alias-state-warn-primary)}
+
+/* tabela em markdown (antes saía como texto corrido) */
+.md-tabela{width:100%;border-collapse:collapse;margin:8px 0;font-size:12.5px}
+.md-tabela th,.md-tabela td{
+  border:1px solid var(--dsw-alias-border-l2);padding:5px 9px;text-align:left;vertical-align:top;
+}
+.md-tabela th{background:var(--dsw-alias-bg-layer-3);font-weight:600;color:var(--dsw-alias-label-primary)}
+.md-tabela tr:nth-child(even) td{background:var(--dsw-alias-bg-layer-1)}
+
+/* densidade compacta (preferência do usuário) */
+body.densidade-compacta .view{padding:16px 20px}
+body.densidade-compacta .chat{gap:7px}
+body.densidade-compacta .card{padding:14px 16px}
+body.densidade-compacta .mcard{padding:9px 12px}
+body.densidade-compacta .msg{margin-top:5px}
+
+/* tamanho de fonte (preferência do usuário) */
+body.fonte-g .chat{font-size:15.5px}
+body.fonte-gg .chat{font-size:17px}
+body.fonte-g .bubble,.fonte-g .bubble li{font-size:14.5px}
+body.fonte-gg .bubble,.fonte-gg .bubble li{font-size:16px}
+
+/* estado do sistema na barra lateral */
+.sys-mini{
+  display:grid;grid-template-columns:auto 1fr auto;gap:2px 7px;align-items:center;
+  font-size:11px;color:var(--dsw-alias-label-tertiary);
+}
+.sys-mini .rot{white-space:nowrap}
+.sys-mini .trilha{height:4px;border-radius:999px;background:var(--dsw-alias-interactive-bg-active);overflow:hidden}
+.sys-mini .preenche{height:100%;background:var(--dsw-alias-state-success-primary);border-radius:999px;transition:width .3s}
+.sys-mini .preenche.aviso{background:var(--dsw-alias-state-warn-primary)}
+.sys-mini .preenche.cheio{background:var(--dsw-alias-state-error-primary)}
+.sys-mini .val{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
+
+/* ajuda de atalhos */
+.atalhos{display:grid;grid-template-columns:auto 1fr;gap:7px 14px;align-items:center;font-size:12.5px}
+.atalhos kbd{
+  font-family:var(--ds-font-family-code);font-size:11px;padding:2px 7px;border-radius:6px;
+  background:var(--dsw-alias-tooltip-key-bg);color:var(--dsw-alias-label-primary);
+  border:1px solid var(--dsw-alias-border-l2);white-space:nowrap;
+}
+.atalhos .o-que{color:var(--dsw-alias-label-secondary)}
+
+/* ações do turno (refazer / copiar) — só aparecem no hover, no PC */
+.turn-acoes{margin-left:auto;display:flex;gap:6px;opacity:0;transition:opacity var(--ds-transition-duration-fast)}
+.turn-head:hover .turn-acoes,.turn-acoes:focus-within{opacity:1}
+@media(max-width:900px){.turn-acoes{opacity:1}}
+.turn-head{display:flex;align-items:center;gap:8px}

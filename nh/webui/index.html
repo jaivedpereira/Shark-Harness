@@ -41,6 +41,8 @@
       <div class="sh-conexao" id="conexao" title="estado do servidor">
         <span class="sh-conexao-ponto"></span><span id="conexaoTxt">conectando…</span>
       </div>
+      <!-- RAM e disco de relance (antes só apareciam na página Sistema) -->
+      <div class="sys-mini" id="sysMini"></div>
       <div class="line" id="pillPlat">—</div>
       <div class="line" id="pillTools">—</div>
       <div class="llm" id="llmLine"><span class="dot" id="llmState"></span><span id="llmText">verificando…</span></div>
@@ -49,6 +51,13 @@
 
   <!-- ══════════ conteúdo ══════════ -->
   <main class="main">
+    <!-- aviso de servidor fora do ar: antes a tela simplesmente parava de
+         responder e não dizia nada -->
+    <div class="sh-offline" id="faixaOffline">
+      <span>⚠️</span>
+      <span>Perdi contato com o servidor. Ele pode ter sido fechado — rodar
+      <code>./.venv/bin/nh web</code> de novo faz esta página voltar sozinha.</span>
+    </div>
 
     <!-- ── Agente ── -->
     <section class="view active" id="view-chat">
@@ -56,12 +65,22 @@
         <div class="vhead-row">
           <h2>Agente</h2>
           <div class="row-actions">
-            <button class="ghost small" id="btnModelo" title="escolher o modelo do chat">
-              <span id="mBtnEmoji">⚙️</span><span id="mBtnTxt">modelo</span>
-            </button>
+            <div class="modelo-wrap">
+              <button class="ghost small" id="btnModelo" title="trocar o modelo do chat"
+                      aria-haspopup="menu" aria-expanded="false">
+                <span id="mBtnEmoji">⚙️</span><span id="mBtnTxt">modelo</span>
+                <span class="caret">▾</span>
+              </button>
+              <!-- troca rápida: 1 toque para trocar entre os modelos cadastrados,
+                   sem abrir o modal grande. Antes o clique só abria o catálogo e
+                   não havia como trocar de fato. -->
+              <div class="modelo-menu" id="modeloMenu" role="menu" hidden></div>
+            </div>
             <button class="ghost small" id="btnRaciocinio" title="esconder o raciocínio e as ferramentas">
               <span class="eye"></span><span class="rlabel">raciocínio: visível</span>
             </button>
+            <button class="ghost small" id="btnBuscaChat" title="procurar nesta conversa">🔍</button>
+            <button class="ghost small" id="btnExportar" title="salvar a conversa em Markdown">⬇️ exportar</button>
           </div>
         </div>
         <p>Descreva a tarefa. Ele escolhe as ferramentas, executa e mostra cada passo.</p>
@@ -92,11 +111,21 @@
         <button>agenda um job a cada 30 min pra checar o disco</button>
         <button>quais ferramentas você tem?</button>
       </div>
+      <!-- busca dentro da conversa -->
+      <div class="sh-busca-chat" id="buscaChat" hidden>
+        <input id="buscaChatTxt" placeholder="procurar nesta conversa…" />
+        <span class="contagem" id="buscaChatContagem"></span>
+        <button class="ghost small" id="buscaChatFechar" type="button">fechar</button>
+      </div>
+
       <form class="composer" id="formAgent">
         <textarea id="prompt" rows="1" placeholder="O que eu faço agora, chefe?"></textarea>
         <button class="primary" id="btnEnviar" type="submit">Enviar</button>
         <button class="ghost parar" id="btnParar" type="button" style="display:none">Parar</button>
       </form>
+
+      <!-- volta para o fim da conversa (some quando você já está no fim) -->
+      <button class="sh-ir-fim" id="irFim" type="button" title="ir para o fim">↓</button>
 
       <!-- navegador de turnos (ideia do TurnNavigator do DeepSeek Harness) -->
       <div class="sh-nav-turnos" id="navTurnos">
@@ -226,6 +255,16 @@
         <h2>Auditoria</h2>
         <p>Todo comando executado fica registrado — com segredos mascarados.</p>
       </header>
+      <div class="filters">
+        <input id="auditSearch" placeholder="filtrar por ferramenta, status ou detalhe…" />
+        <select id="auditStatus">
+          <option value="">todos os status</option>
+          <option value="ok">só os que deram certo</option>
+          <option value="blocked">só os bloqueados pela guarda</option>
+          <option value="error">só os que falharam</option>
+        </select>
+        <span class="status" id="auditContagem"></span>
+      </div>
       <div class="tablewrap"><table id="auditTable"><tbody></tbody></table></div>
     </section>
 
@@ -340,6 +379,22 @@
             <span class="hint">Vale só neste aparelho. Se você escreve mensagens longas,
             prefira a segunda — aí o Enter só desce a linha.</span>
           </label>
+          <label>Densidade da tela
+            <select id="cfgDensidade">
+              <option value="normal">Confortável — com respiro</option>
+              <option value="compacta">Compacta — cabe mais na tela</option>
+            </select>
+            <span class="hint">Compacta reduz os espaçamentos. Bom em tela pequena
+            ou quando você quer ver mais ferramentas de uma vez.</span>
+          </label>
+          <label>Tamanho da letra da conversa
+            <select id="cfgFonte">
+              <option value="normal">Normal</option>
+              <option value="g">Grande</option>
+              <option value="gg">Muito grande</option>
+            </select>
+            <span class="hint">Vale só neste aparelho.</span>
+          </label>
           <label>Tamanho dos itens da barra de baixo
             <select id="cfgBarra">
               <option value="normal">Normal — ícones e rótulos completos</option>
@@ -414,6 +469,28 @@
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
 <!-- ══════════ modal de escolher sessão ══════════ -->
+<!-- ajuda de atalhos (abre com "?" ou pelo botão) -->
+<div class="modal" id="atalhosModal">
+  <div class="modal-card" style="width:min(460px,100%)">
+    <div class="modal-head">
+      <h3>Atalhos do teclado</h3>
+      <button class="ghost" id="atalhosClose" type="button">✕</button>
+    </div>
+    <div class="atalhos">
+      <kbd>Enter</kbd><span class="o-que">envia a mensagem (ou quebra linha — veja em Ajustes)</span>
+      <kbd>Shift + Enter</kbd><span class="o-que">quebra a linha sem enviar</span>
+      <kbd>Esc</kbd><span class="o-que">fecha modal aberto, ou para o agente se estiver rodando</span>
+      <kbd>Ctrl + K</kbd><span class="o-que">foca o campo de digitar</span>
+      <kbd>Ctrl + Enter</kbd><span class="o-que">envia (quando o Enter está em modo quebrar linha)</span>
+      <kbd>Ctrl + B</kbd><span class="o-que">esconde ou mostra o raciocínio e as ferramentas</span>
+      <kbd>Ctrl + F</kbd><span class="o-que">procurar nesta conversa</span>
+      <kbd>Ctrl + Shift + C</kbd><span class="o-que">copiar a última resposta inteira</span>
+      <kbd>?</kbd><span class="o-que">esta ajuda</span>
+    </div>
+    <p class="hint" style="margin-top:12px">No celular, o botão 🔍 no topo abre a busca e o ⬇️ exporta a conversa.</p>
+  </div>
+</div>
+
 <div class="modal" id="sesModal">
   <div class="modal-card">
     <header>

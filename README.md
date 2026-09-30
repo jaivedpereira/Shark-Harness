@@ -251,7 +251,16 @@ a conversa rola por trás dele, sem levar o campo junto.
 O harness nasceu com **um** modelo. Agora você cadastra quantos quiser, cada um com o seu
 **endpoint** e o seu **nível** — e troca no topo do chat com um toque.
 
-### 🌐 16 provedores prontos — e ele **busca a lista real de modelos**
+### 🔄 Trocar de modelo em 1 toque
+
+O botão no topo do chat abre a **lista dos modelos cadastrados**, agrupada por nível, com
+marca de **"em uso"** e aviso de **"sem chave"**. Escolher já troca — sem passar pelo modal.
+
+No catálogo você também pode **subir/descer** um modelo (a ordem **é** a ordem em que as
+reservas são tentadas quando o principal falha) e **duplicar** um modelo para variar sem
+digitar tudo de novo.
+
+### 🌐 32 provedores prontos — e ele **busca a lista real de modelos**
 
 Em vez de decorar nomes de modelo, escolha o provedor e clique em **🔍 buscar modelos**:
 o harness pergunta ao endpoint (`/v1/models`) quais modelos existem e mostra a lista para
@@ -261,8 +270,8 @@ são grátis). Ao clicar num modelo, o **nível já vem sugerido** pelo nome
 
 | tipo | provedores |
 |---|---|
-| ☁️ **nuvem** | OpenRouter · Groq · DeepSeek · Mistral · Google Gemini · Cerebras · Together · Fireworks · xAI (Grok) · OpenAI · Anthropic · OpenCode Zen |
-| 🏠 **local, sem chave** | Ollama · LM Studio · llama.cpp server |
+| ☁️ **nuvem** (27) | OpenRouter · Groq · DeepSeek · Mistral · Gemini · Cerebras · Together · Fireworks · xAI · OpenAI · Anthropic · OpenCode Zen · **Cohere · Moonshot (Kimi) · Zhipu (GLM) · Qwen · DeepInfra · Perplexity · GitHub Models · Nebius · Hyperbolic · Novita · SambaNova · Chutes · Requesty · Vercel AI Gateway** |
+| 🏠 **local, sem chave** (5) | Ollama · LM Studio · llama.cpp · **vLLM · Jan** |
 | 🔧 | Personalizado (qualquer endpoint OpenAI-compatível) |
 
 Cada provedor já vem com a dica, o tipo e o **link direto para pegar a chave**.

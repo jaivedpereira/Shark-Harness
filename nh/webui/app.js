@@ -29,11 +29,13 @@ async function loadState() {
   try {
     STATE = await api("/api/state");
     ULTIMA_LATENCIA = Math.round(performance.now() - t0);
+    pintarOffline(false);   // voltou: tira a faixa de aviso
     // mostra a latência: "ok" sozinho não diz se está rápido ou arrastando
     pintarConexao("ok", `servidor ok · ${ULTIMA_LATENCIA}ms`);
   } catch (e) {
     $("#llmText").textContent = "sem conexão com o servidor";
     pintarConexao("erro", "servidor fora do ar");
+    pintarOffline(true);
     return;
   }
   // blindagem: um elemento que mude de nome não pode derrubar o resto da interface
@@ -45,6 +47,7 @@ async function loadState() {
 }
 
 function pintarEstado() {
+  pintarSysMini();   // RAM/disco na barra lateral, de relance
   const p = STATE.platform || {};
   $("#pillPlat").textContent = `${p.name || "?"}`;
   $("#pillTools").textContent = `${STATE.tools.length} ferramentas · risco ≤ ${STATE.max_risk}`;
@@ -85,6 +88,9 @@ function irPara(view) {
   const rolagem = $(".main");
   if (rolagem) rolagem.scrollTop = 0;
   window.scrollTo(0, 0);
+
+  // lembra onde o usuário estava: recarregar a página voltava sempre pro Agente
+  try { localStorage.setItem("sh_pagina", view); } catch (_) { /* modo privado */ }
 
   if (view === "config") carregarConfig();
   else if (view === "tools") carregarLoja();
@@ -236,12 +242,9 @@ function md(texto) {
        .replace(/^\s*\d+[.)]\s+(.+)$/gm, "<li>$1</li>")
        .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>");
 
-  // 4) tabelas simples (| a | b |) — só as linhas de dados viram texto alinhado
-  s = s.replace(/^\|(.+)\|$/gm, (linha) => {
-    if (/^\|[\s:|-]+\|$/.test(linha)) return "";
-    const cels = linha.slice(1, -1).split("|").map((c) => c.trim());
-    return "— " + cels.join(" · ");
-  });
+  // 4) tabelas de verdade (| a | b | com linha de traços embaixo)
+  //    Antes cada linha virava "— a · b" e a tabela chegava ilegível.
+  s = montarTabelas(s);
 
   // 5) inline
   s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>")
@@ -308,7 +311,8 @@ function addMsg(quem, texto, opts) {
     m.querySelector(".bubble").append(b);
   }
   chat.append(m);
-  chat.scrollTop = chat.scrollHeight;
+  if (ACOMPANHAR) chat.scrollTop = chat.scrollHeight;
+  atualizarIrFim();
   return m;
 }
 
@@ -333,7 +337,8 @@ function addTurn() {
     PREF.ocultar = t.classList.contains("closed");
   });
   chat.append(t);
-  chat.scrollTop = chat.scrollHeight;
+  if (ACOMPANHAR) chat.scrollTop = chat.scrollHeight;
+  atualizarIrFim();
   return { t, steps, body, meta, btn };
 }
 
@@ -343,6 +348,23 @@ function resumirTurno(turno, dados) {
   const d = dados || {};
   // o cabeçalho nasce com o brilho de "pensando…"; aqui ele vira o resumo seco
   const txt = t.querySelector(".ttxt") || t.querySelector(".sh-shimmer-txt");
+  // ações do turno: refazer a mesma pergunta e copiar a resposta inteira
+  const cab = t.querySelector(".turn-head");
+  if (cab && !cab.querySelector(".turn-acoes")) {
+    const acoes = el("div", "turn-acoes");
+    const refazer = el("button", "mini", "↻ refazer");
+    refazer.title = "manda a mesma pergunta de novo";
+    refazer.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      $("#prompt").value = ultimaPergunta();
+      $("#formAgent").dispatchEvent(new Event("submit"));
+    });
+    const copiar = el("button", "mini", "copiar");
+    copiar.title = "copia a resposta inteira";
+    copiar.addEventListener("click", (ev) => { ev.stopPropagation(); copiarTurno(t); });
+    acoes.append(refazer, copiar);
+    cab.append(acoes);
+  }
   const partes = [];
   if (n) partes.push(`${n} passo${n > 1 ? "s" : ""}`);
   if (d.ferramentas && d.ferramentas.length) {
@@ -361,6 +383,7 @@ function resumirTurno(turno, dados) {
     // medidor de contexto: quanto da janela do modelo esta conversa já ocupou
     turno.t.appendChild(medidorContexto(d));
   }
+  conferirContexto(d);
   if (d.ferramentas && d.ferramentas.length) {
     const p = el("div", "turn-tools");
     d.ferramentas.forEach((f) => p.append(el("span", "sh-pill", esc(f))));
@@ -420,7 +443,7 @@ function addStep(box, tipo, nome, detalhe) {
 
   s.append(dot, corpo);
   box.append(s);
-  chat.scrollTop = chat.scrollHeight;
+  if (ACOMPANHAR) chat.scrollTop = chat.scrollHeight;
 }
 
 /* ───────────────── envio: sessão, parar e repetir ───────────────── */
@@ -488,7 +511,7 @@ async function enviar(texto, repetir) {
   const turno = addTurn();
   const sp = el("div", "spinner", "<i></i><i></i><i></i>");
   turno.steps.append(sp);
-  chat.scrollTop = chat.scrollHeight;
+  if (ACOMPANHAR) chat.scrollTop = chat.scrollHeight;
 
   ENVIANDO = new AbortController();
   const btnEnviar = $("#btnEnviar");
@@ -513,7 +536,7 @@ async function enviar(texto, repetir) {
     }
     if (sp.parentNode) sp.remove();
     addStep(turno.steps, p.tipo, p.nome, p.detalhe);
-    chat.scrollTop = chat.scrollHeight;
+    if (ACOMPANHAR) chat.scrollTop = chat.scrollHeight;
   };
 
   try {
@@ -531,7 +554,7 @@ async function enviar(texto, repetir) {
         if (sp.parentNode) sp.remove();
         const box = liveBox(turno);
         box.querySelector(".live-txt").textContent += dados.texto || "";
-        chat.scrollTop = chat.scrollHeight;
+        if (ACOMPANHAR) chat.scrollTop = chat.scrollHeight;
       } else if (nome === "erro") {
         if (sp.parentNode) sp.remove();
         addStep(turno.steps, "erro", "erro", dados.mensagem || "erro");
@@ -666,14 +689,37 @@ $("#cAdd").addEventListener("click", async () => {
 });
 
 /* ───────────────── auditoria ───────────────── */
+/* Filtro da auditoria: procura no texto (ferramenta + detalhe) e no status.
+   Um log com centenas de linhas sem busca é inútil na prática. */
+function filtrosAuditoria() {
+  const txt = ($("#auditSearch").value || "").toLowerCase().trim();
+  const st = $("#auditStatus").value || "";
+  return STATE.audit.filter((a) => {
+    if (st && String(a.status) !== st) return false;
+    if (!txt) return true;
+    return `${a.tool} ${a.detail} ${a.status}`.toLowerCase().includes(txt);
+  });
+}
+
 function renderAudit() {
   const tb = $("#auditTable").querySelector("tbody");
   tb.innerHTML = "";
+  const linhas = filtrosAuditoria();
+  const cont = $("#auditContagem");
+  if (cont) {
+    cont.textContent = linhas.length === STATE.audit.length
+      ? `${STATE.audit.length} registro(s)`
+      : `${linhas.length} de ${STATE.audit.length}`;
+  }
   if (!STATE.audit.length) {
     tb.append(el("tr", "", '<td colspan="4" class="t">log vazio — nada executado ainda</td>'));
     return;
   }
-  STATE.audit.slice().reverse().forEach((a) => {
+  if (!linhas.length) {
+    tb.append(el("tr", "", '<td colspan="4" class="t">nenhum registro com esse filtro</td>'));
+    return;
+  }
+  linhas.slice().reverse().forEach((a) => {
     const cls = a.status === "ok" ? "b-ok" : a.status === "blocked" ? "b-blocked" : "b-error";
     tb.append(el("tr", "",
       `<td class="t">${esc(a.ts)}</td><td><span class="badge ${cls}">${esc(a.status)}</span></td>
@@ -1508,6 +1554,19 @@ function renderCatalogo() {
   box.append(ficha);
 }
 
+async function moverModelo(id, direcao) {
+  const r = await api("/api/modelos", { method: "POST",
+    body: { acao: "mover", id, direcao } });
+  if (r.lista) { MODELOS = r.lista; renderCatalogo(); }
+  toast(r.msg || r.erro, r.ok ? "ok" : "err");
+}
+
+async function duplicarModelo(id) {
+  const r = await api("/api/modelos", { method: "POST", body: { acao: "duplicar", id } });
+  if (r.lista) { MODELOS = r.lista; renderCatalogo(); }
+  toast(r.msg || r.erro, r.ok ? "ok" : "err");
+}
+
 function cartaoModelo(m) {
   const ativo = MODELOS.ativo === m.id;
   const ficha = el("div", "mcard" + (ativo ? " on" : ""));
@@ -1534,9 +1593,20 @@ function cartaoModelo(m) {
   testar.addEventListener("click", () => testarModelo(m.id));
   const editar = el("button", "ghost small", "editar");
   editar.addEventListener("click", () => editarModelo(m));
+  // prioridade: a ordem do catálogo É a ordem em que as reservas são tentadas,
+  // então subir/descer mexe de verdade no comportamento quando o principal falha
+  const subir = el("button", "ghost small", "↑");
+  subir.title = "tentar este ANTES dos de cima quando o principal falhar";
+  subir.addEventListener("click", () => moverModelo(m.id, "subir"));
+  const descer = el("button", "ghost small", "↓");
+  descer.title = "tentar este DEPOIS dos de baixo";
+  descer.addEventListener("click", () => moverModelo(m.id, "descer"));
+  const duplicar = el("button", "ghost small", "duplicar");
+  duplicar.title = "cria uma cópia para variar o modelo sem digitar tudo de novo";
+  duplicar.addEventListener("click", () => duplicarModelo(m.id));
   const del = el("button", "ghost small", "remover");
   del.addEventListener("click", () => removerModelo(m));
-  acoes.append(testar, editar, del);
+  acoes.append(testar, editar, subir, descer, duplicar, del);
   ficha.append(acoes);
 
   const r = RESULTADOS[m.id];
@@ -1792,11 +1862,88 @@ $("#mUrl").addEventListener("change", () => {
   if (p) $("#mProvedor").value = p.id;
 });
 
-$("#btnModelo").addEventListener("click", async () => {
-  $("#modelModal").classList.add("open");
-  limparFormModelo();
-  await carregarModelos();
-  preencherProvedores();
+/* ── troca rápida de modelo (o que faltava para "realmente trocar") ──
+   Um toque no botão abre a lista dos modelos cadastrados; escolher já ativa.
+   O modal grande continua existindo, atrás do item "gerenciar". */
+function fecharMenuModelo() {
+  const m = $("#modeloMenu");
+  if (m) { m.hidden = true; m.innerHTML = ""; }
+  $("#btnModelo").setAttribute("aria-expanded", "false");
+}
+
+async function abrirMenuModelo() {
+  const menu = $("#modeloMenu");
+  $("#btnModelo").setAttribute("aria-expanded", "true");
+  menu.hidden = false;
+  menu.innerHTML = `<p class="mm-carregando">carregando…</p>`;
+  let dados;
+  try {
+    dados = await api("/api/modelos");
+  } catch (e) {
+    menu.innerHTML = `<p class="mm-erro">não consegui ler o catálogo</p>`;
+    return;
+  }
+  MODELOS = dados;
+  const lista = dados.modelos || [];
+  const ativo = dados.ativo || "";
+  menu.innerHTML = "";
+
+  if (!lista.length) {
+    menu.innerHTML =
+      `<p class="mm-vazio">Nenhum modelo cadastrado ainda.<br>
+       <span>Você está usando o modelo global do Ajustes.</span></p>`;
+  } else {
+    // agrupa por nível, como no modal
+    const porNivel = {};
+    lista.forEach((m) => { (porNivel[m.nivel] = porNivel[m.nivel] || []).push(m); });
+    Object.keys(porNivel).sort().forEach((n) => {
+      const info = (dados.niveis || []).find((x) => String(x.nivel) === String(n)) || {};
+      menu.append(el("p", "mm-grupo", `${info.emoji || ""} ${info.nome || "nível " + n}`));
+      porNivel[n].forEach((m) => {
+        const b = el("button", "mm-item" + (String(m.id) === String(ativo) ? " em-uso" : ""));
+        b.type = "button";
+        b.setAttribute("role", "menuitem");
+        b.innerHTML =
+          `<span class="mm-nome">${esc(m.apelido || m.modelo)}</span>` +
+          `<span class="mm-sub">${esc(String(m.modelo || "").split("/").pop())}` +
+          `${m.tem_chave ? "" : " · ⚠️ sem chave"}</span>` +
+          (String(m.id) === String(ativo) ? `<span class="rtag r-safe">em uso</span>` : "");
+        b.addEventListener("click", async () => {
+          fecharMenuModelo();
+          const r = await api("/api/modelos", { method: "POST",
+            body: { acao: "ativar", id: m.id } });
+          toast(r.msg || (r.ok ? "modelo trocado" : r.erro), r.ok ? "ok" : "err");
+          await loadState();
+          atualizarBtnModelo();
+        });
+        menu.append(b);
+      });
+    });
+  }
+
+  const gerenciar = el("button", "mm-gerenciar", "⚙️ gerenciar modelos…");
+  gerenciar.type = "button";
+  gerenciar.addEventListener("click", async () => {
+    fecharMenuModelo();
+    $("#modelModal").classList.add("open");
+    limparFormModelo();
+    await carregarModelos();
+    preencherProvedores();
+  });
+  menu.append(gerenciar);
+}
+
+$("#btnModelo").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const menu = $("#modeloMenu");
+  if (!menu.hidden) { fecharMenuModelo(); return; }
+  await abrirMenuModelo();
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".modelo-wrap")) fecharMenuModelo();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") fecharMenuModelo();
 });
 $("#modelModalClose").addEventListener("click", () => $("#modelModal").classList.remove("open"));
 $("#mSalvar").addEventListener("click", salvarModelo);
@@ -1811,6 +1958,280 @@ $("#mCancelar").addEventListener("click", limparFormModelo);
   });
   sel.value = "2";
 })();
+
+
+/* ══════════════════════════════════════════════════════════════
+   POLIMENTO — itens novos desta rodada
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 1. tabelas de verdade no markdown ──
+   Antes: cada linha virava "— a · b". Agora: <table> com cabeçalho, que é o
+   que o modelo espera quando escreve | coluna | outra |. */
+function montarTabelas(texto) {
+  const linhas = texto.split("\n");
+  const saida = [];
+  let i = 0;
+  while (i < linhas.length) {
+    const l = linhas[i];
+    const linhasTabela = [];
+    // a tabela começa em |...| e a SEGUNDA linha tem que ser a de traços
+    if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < linhas.length && /^\s*\|[\s:|-]+\|\s*$/.test(linhas[i + 1])) {
+      linhasTabela.push(l);
+      i++;
+      while (i < linhas.length && /^\s*\|.*\|\s*$/.test(linhas[i])) {
+        linhasTabela.push(linhas[i]);
+        i++;
+      }
+      const celulas = (t) => t.trim().slice(1, -1).split("|").map((c) => c.trim());
+      const cab = celulas(linhasTabela[0]);
+      const corpo = linhasTabela.slice(2).map(celulas);
+      saida.push(
+        `<table class="md-tabela"><thead><tr>` +
+        cab.map((c) => `<th>${c}</th>`).join("") +
+        `</tr></thead><tbody>` +
+        corpo.map((linha) => `<tr>` +
+          cab.map((_, j) => `<td>${linha[j] === undefined ? "" : linha[j]}</td>`).join("") +
+          `</tr>`).join("") +
+        `</tbody></table>`);
+      continue;
+    }
+    saida.push(l);
+    i++;
+  }
+  return saida.join("\n");
+}
+
+/* ── 2. faixa de servidor fora do ar ──
+   Antes: se o processo morresse, a tela continuava bonita e simplesmente não
+   respondia mais. Agora ela avisa, e some sozinha quando o servidor volta. */
+let OFFLINE = false;
+function pintarOffline(caiu) {
+  const f = $("#faixaOffline");
+  if (!f) return;
+  OFFLINE = caiu;
+  f.classList.toggle("visivel", caiu);
+}
+
+/* ── 3. botão "ir para o fim" + trava de acompanhar ──
+   Enquanto o agente escreve, a rolagem desce sozinha. Se o usuário subir para
+   ler, ela PARA de puxar (era irritante ser arrastado de volta). */
+let ACOMPANHAR = true;
+function noFim(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
+
+function atualizarIrFim() {
+  const b = $("#irFim");
+  const c = $("#chat");
+  if (!b || !c) return;
+  b.classList.toggle("visivel", !noFim(c) && c.scrollHeight > c.clientHeight + 40);
+}
+
+/* ── 4. busca dentro da conversa ── */
+function buscarNaConversa(termo) {
+  const c = $("#chat");
+  if (!c) return;
+  // limpa as marcas anteriores
+  c.querySelectorAll(".marca-busca").forEach((m) => {
+    const pai = m.parentNode;
+    pai.replaceChild(document.createTextNode(m.textContent), m);
+    pai.normalize();
+  });
+  const contagem = $("#buscaChatContagem");
+  const t = String(termo || "").trim();
+  if (t.length < 2) { if (contagem) contagem.textContent = ""; return; }
+  const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  let achados = 0;
+  const andar = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+  const alvos = [];
+  while (andar.nextNode()) {
+    const n = andar.currentNode;
+    if (!n.nodeValue || !re.test(n.nodeValue)) continue;
+    if (n.parentNode && n.parentNode.classList && n.parentNode.classList.contains("marca-busca")) continue;
+    alvos.push(n);
+  }
+  alvos.forEach((n) => {
+    const partes = n.nodeValue.split(re);
+    const frag = document.createDocumentFragment();
+    partes.forEach((parte, idx) => {
+      if (idx % 2 === 0) frag.append(document.createTextNode(parte));
+      else { frag.append(el("mark", "marca-busca", esc(parte))); achados++; }
+    });
+    n.parentNode.replaceChild(frag, n);
+  });
+  if (contagem) contagem.textContent = achados ? `${achados} trecho(s)` : "nada encontrado";
+  const primeiro = c.querySelector(".marca-busca");
+  if (primeiro) primeiro.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+/* ── 5. exportar a conversa em Markdown ── */
+function exportarConversa() {
+  const turnos = turnosNaTela();
+  if (!turnos.length) { toast("não há conversa para exportar", "err"); return; }
+  const agora = new Date().toLocaleString("pt-BR");
+  const linhas = [`# Conversa — Shark Harness`, `_exportado em ${agora}_`, ""];
+  turnos.forEach((t) => {
+    const pergunta = t.querySelector(".bubble.eu, .msg.eu .bubble");
+    const resposta = [...t.querySelectorAll(".bubble")].pop();
+    const resumo = t.querySelector(".ttxt");
+    if (pergunta) linhas.push(`## 👤 Você`, "", pergunta.textContent.trim(), "");
+    if (resumo) linhas.push(`_${resumo.textContent.trim()}_`, "");
+    if (resposta) linhas.push(`## 🦈 Shark`, "", resposta.textContent.trim(), "");
+    linhas.push("---", "");
+  });
+  const texto = linhas.join("\n");
+  const blob = new Blob([texto], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `conversa-shark-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.md`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast("conversa exportada em Markdown", "ok");
+}
+
+/* ── 6. RAM e disco de relance na barra lateral ── */
+function pintarSysMini() {
+  const box = $("#sysMini");
+  if (!box) return;
+  // o sysinfo do plugin é um RELATÓRIO DE TEXTO; os números vêm já extraídos
+  // em `sysinfo_metricas` pelo servidor (antes eu tentava ler chaves que não
+  // existiam e a barra ficava vazia em silêncio)
+  const m = (STATE && STATE.sysinfo_metricas) || null;
+  if (!m) return;
+  const linhas = [];
+  if (typeof m.ram_pct === "number") {
+    linhas.push({ rot: "RAM", pct: m.ram_pct, val: `${m.ram_usado} de ${m.ram_total}` });
+  }
+  if (typeof m.disco_pct === "number") {
+    linhas.push({ rot: "disco", pct: m.disco_pct,
+                  val: m.disco_livre ? `${m.disco_livre} livre` : `${m.disco_usado} de ${m.disco_total}` });
+  }
+  if (!linhas.length) { box.innerHTML = ""; return; }
+  box.innerHTML = linhas.map((l) => {
+    const cls = l.pct >= 90 ? "cheio" : l.pct >= 75 ? "aviso" : "";
+    return `<span class="rot">${l.rot}</span>` +
+           `<span class="trilha"><i class="preenche ${cls}" style="width:${Math.min(100, l.pct)}%"></i></span>` +
+           `<span class="val" title="${l.pct}%">${esc(l.val)}</span>`;
+  }).join("");
+}
+
+/* ── 7. densidade e tamanho da letra (por aparelho) ── */
+function aplicarAparencia() {
+  const d = localStorage.getItem("sh_densidade") || "normal";
+  const f = localStorage.getItem("sh_fonte") || "normal";
+  document.body.classList.toggle("densidade-compacta", d === "compacta");
+  document.body.classList.toggle("fonte-g", f === "g");
+  document.body.classList.toggle("fonte-gg", f === "gg");
+  const sd = $("#cfgDensidade"); if (sd) sd.value = d;
+  const sf = $("#cfgFonte"); if (sf) sf.value = f;
+}
+document.addEventListener("change", (e) => {
+  if (!e.target) return;
+  if (e.target.id === "cfgDensidade") {
+    localStorage.setItem("sh_densidade", e.target.value); aplicarAparencia();
+    toast(e.target.value === "compacta" ? "densidade compacta" : "densidade confortável", "ok");
+  }
+  if (e.target.id === "cfgFonte") {
+    localStorage.setItem("sh_fonte", e.target.value); aplicarAparencia();
+    toast("tamanho da letra atualizado", "ok");
+  }
+});
+
+/* ── 8. atalhos do teclado ── */
+function abrirAtalhos() { $("#atalhosModal").classList.add("open"); }
+$("#atalhosClose").addEventListener("click", () => $("#atalhosModal").classList.remove("open"));
+document.addEventListener("keydown", (e) => {
+  const digitando = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
+  // "?" abre a ajuda (só fora de campo de texto)
+  if (e.key === "?" && !digitando) { e.preventDefault(); abrirAtalhos(); return; }
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === "k") { e.preventDefault(); $("#prompt").focus(); }
+  if (k === "b") {
+    e.preventDefault();
+    $("#btnRaciocinio").click();
+  }
+  if (k === "f") {
+    e.preventDefault();
+    $("#buscaChat").hidden = false;
+    $("#buscaChatTxt").focus();
+  }
+  if (k === "c" && e.shiftKey) {
+    const ultima = [...document.querySelectorAll("#chat .bubble")].pop();
+    if (ultima) {
+      navigator.clipboard?.writeText(ultima.textContent.trim());
+      toast("última resposta copiada", "ok");
+    }
+  }
+});
+
+/* ── 9. refazer o último turno ── */
+function ultimaPergunta() {
+  const caixas = [...document.querySelectorAll("#chat .bubble.eu")];
+  return caixas.length ? caixas[caixas.length - 1].textContent.trim() : "";
+}
+function refazerUltimo() {
+  const p = ultimaPergunta();
+  if (!p) { toast("nada para refazer ainda", "err"); return; }
+  $("#prompt").value = p;
+  $("#formAgent").dispatchEvent(new Event("submit"));
+}
+
+/* ── 10. copiar o turno inteiro (pergunta + passos + resposta) ── */
+function copiarTurno(t) {
+  const resposta = [...t.querySelectorAll(".bubble")].pop();
+  if (!resposta) return;
+  navigator.clipboard?.writeText(resposta.textContent.trim());
+  toast("resposta copiada", "ok");
+}
+
+/* ── 11. lembrar a última página aberta ──
+   Recarregar a página voltava sempre para o Agente, perdendo onde você estava. */
+const PAGINAS = ["chat", "sessoes", "tools", "cron", "audit", "sys", "config"];
+
+/* ── 12. busca na lista de ferramentas e na auditoria ── */
+function filtrarLista(seletorItens, termo) {
+  const t = String(termo || "").toLowerCase().trim();
+  document.querySelectorAll(seletorItens).forEach((el2) => {
+    const bate = !t || el2.textContent.toLowerCase().includes(t);
+    el2.style.display = bate ? "" : "none";
+  });
+}
+
+/* ── 13. aviso quando o contexto está quase cheio ──
+   O medidor mostra a porcentagem, mas ninguém repara num número. O aviso
+   aparece uma vez por turno, quando passa de 85%. */
+let AVISOU_CONTEXTO = false;
+function conferirContexto(d) {
+  const usado = Number((d || {}).prompt_tokens || 0);
+  const pct = usado / LIMITE_CONTEXTO;
+  if (pct >= 0.85 && !AVISOU_CONTEXTO) {
+    AVISOU_CONTEXTO = true;
+    toast(`contexto em ${Math.round(pct * 100)}% — a conversa está ficando longa. ` +
+          "Considere começar uma nova ou usar um modelo de contexto maior.", "err");
+  }
+}
+
+/* ── ligações dos botões novos ── */
+$("#irFim").addEventListener("click", () => {
+  const c = $("#chat");
+  ACOMPANHAR = true;
+  c.scrollTo({ top: c.scrollHeight, behavior: "smooth" });
+});
+$("#btnBuscaChat").addEventListener("click", () => {
+  const b = $("#buscaChat");
+  b.hidden = !b.hidden;
+  if (!b.hidden) $("#buscaChatTxt").focus();
+  else buscarNaConversa("");
+});
+$("#buscaChatTxt").addEventListener("input", (e) => buscarNaConversa(e.target.value));
+$("#buscaChatFechar").addEventListener("click", () => {
+  $("#buscaChat").hidden = true;
+  buscarNaConversa("");
+});
+$("#btnExportar").addEventListener("click", exportarConversa);
+$("#chat").addEventListener("scroll", () => {
+  ACOMPANHAR = noFim($("#chat"));
+  atualizarIrFim();
+}, { passive: true });
 
 /* ───────────────── init ───────────────── */
 /* o campo cresce conforme você escreve (até 6 linhas) e volta ao normal */
@@ -1898,6 +2319,8 @@ async function testarTudo() {
   btn.textContent = "Testar tudo";
 }
 $("#btnSaude").addEventListener("click", testarTudo);
+$("#auditSearch").addEventListener("input", renderAudit);
+$("#auditStatus").addEventListener("change", renderAudit);
 
 /* ═══════════════════ estado da conexão (ConnectionIndicator) ═══════════════════
    Receita do DeepSeek Harness: uma pílula de estado cuja borda sai de
@@ -1979,10 +2402,19 @@ document.addEventListener("change", (e) => {
 });
 
 /* ───────────────── init ───────────────── */
+const pg = localStorage.getItem("sh_pagina");
+irPara(PAGINAS.includes(pg) ? pg : "chat");
 loadState();
 carregarLoja();
 carregarSessoes();
 renderSessaoBar();
 aplicarEnter();
+aplicarAparencia();
 atualizarNavTurnos();
-setInterval(loadState, 20000);
+atualizarIrFim();
+
+/* consulta mais espaçada que a de antes, e o aviso de offline sai daqui */
+setInterval(async () => {
+  await loadState();
+  pintarSysMini();
+}, 20000);
