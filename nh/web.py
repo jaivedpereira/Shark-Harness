@@ -62,6 +62,21 @@ class Handler(BaseHTTPRequestHandler):
     # threaded, então é de propósito que estes vivem na classe, não por instância)
     _sysinfo: dict = {}
     _sysinfo_em: float = 0.0
+
+    def handle_one_request(self) -> None:
+        # Quando o navegador recarrega, fecha a aba ou o servidor é parado, a
+        # conexão cai no meio e o socketserver imprimia um TRACEBACK INTEIRO no
+        # terminal. Não é erro: é rotina. Engolir aqui evita assustar quem só
+        # fechou a aba, e deixa o log limpo para quem está depurando algo real.
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+        except OSError as exc:
+            # 32 = broken pipe; 104 = connection reset. O resto sobe, que aí é bug.
+            if exc.errno not in (32, 104):
+                raise
+            self.close_connection = True
     reg: Registry
     token: str = ""
     max_risk: str = "exec"
