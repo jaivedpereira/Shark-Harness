@@ -2,30 +2,106 @@
    Shark Harness — azul e preto, limpo, com vidro fosco.
    Sem gradiente exagerado, sem brilho, sem animação decorativa.
    ══════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   TOKENS EM TRÊS CAMADAS — arquitetura copiada do DeepSeek Harness
+   (deepseek-ai/deepseek-harness, MIT · packages/client/ui-primitives)
+
+   A ideia deles, que é boa: nada no CSS usa cor crua. Tudo passa por
+
+     1. PRIMITIVO   --sh-azul-500: #4d94ff      (o valor, sem sentido)
+     2. ALIAS       --dsw-alias-label-primary   (o papel na interface)
+     3. ESPECÍFICO  --dsh-tabbar-altura         (um caso único, documentado)
+
+   Com isso, trocar o tema é mexer só na camada 2 — nenhum componente sabe o
+   hex de nada. Os nomes `dsw-*` e `ds-*` são os deles, mantidos de propósito
+   para o código bater com a referência; os meus antigos (--bg, --panel, --text)
+   continuam valendo, apontando para os aliases, para não quebrar o que existe.
+   ══════════════════════════════════════════════════════════════ */
 :root{
-  /* preto de verdade: o fundo é #000 e as superfícies são cinza neutro bem perto disso */
-  --bg:#000000;
-  --side:#0a0a0b;
-  --panel:#101012;
-  --panel2:#17171a;
-  --line:#212125;
-  --line2:#2e2e34;
-  --text:#ececf0;
-  --muted:#a6a6b2;
-  --accent:#4d94ff;
-  --accent-dim:#1c283d;
-  --ok:#3fb950;
-  --warn:#d29922;
-  --danger:#f85149;
-  /* cantos mais generosos */
-  --r:14px;
-  --r-lg:18px;
-  --r-xl:24px;
-  /* camadas de vidro: fundo translúcido + desfoque */
-  --vidro:rgba(18,18,20,.72);
-  --vidro-forte:rgba(10,10,11,.86);
+  /* ── camada 1: PRIMITIVOS (valores crus, sem significado) ── */
+  --sh-preto-0:#000000;
+  --sh-preto-1:#0a0a0b;
+  --sh-preto-2:#101012;
+  --sh-preto-3:#17171a;
+  --sh-preto-4:#1f1f23;
+  --sh-cinza-2:#212125;
+  --sh-cinza-3:#2e2e34;
+  --sh-branco-0:#ececf0;
+  --sh-branco-1:#a6a6b2;
+  --sh-branco-2:#7c7c88;
+  --sh-azul-500:#4d94ff;
+  --sh-azul-700:#1c283d;
+  --sh-verde-500:#3fb950;
+  --sh-ambar-500:#d29922;
+  --sh-vermelho-500:#f85149;
+  --sh-violeta-500:#a371f7;
+
+  /* ── camada 2: ALIASES (o papel de cada coisa) ── */
+  /* superfícies: base é o fundo, layer-1/2/3 são os degraus de elevação */
+  --dsw-alias-bg-base:var(--sh-preto-0);
+  --dsw-alias-bg-layer-1:var(--sh-preto-2);
+  --dsw-alias-bg-layer-2:var(--sh-preto-3);
+  --dsw-alias-bg-layer-3:var(--sh-preto-4);
+  /* texto: primário (título), secundário (corpo), terciário (legenda) */
+  --dsw-alias-label-primary:var(--sh-branco-0);
+  --dsw-alias-label-secondary:var(--sh-branco-1);
+  --dsw-alias-label-tertiary:var(--sh-branco-2);
+  /* ação */
+  --dsw-alias-interactive-bg-hover:rgba(255,255,255,.05);
+  --dsw-alias-interactive-bg-active:rgba(255,255,255,.09);
+  --dsw-alias-accent:var(--sh-azul-500);
+  --dsw-alias-accent-dim:var(--sh-azul-700);
+  --dsw-alias-border:var(--sh-cinza-2);
+  --dsw-alias-border-strong:var(--sh-cinza-3);
+  /* estados: cada um com rótulo (texto/ícone) e preenchimento (fundo) */
+  --dsw-alias-state-ok-label:var(--sh-verde-500);
+  --dsw-alias-state-ok-fill:rgba(63,185,80,.14);
+  --dsw-alias-state-warn-label:var(--sh-ambar-500);
+  --dsw-alias-state-warn-fill:rgba(210,153,34,.15);
+  --dsw-alias-state-danger-label:var(--sh-vermelho-500);
+  --dsw-alias-state-danger-fill:rgba(248,81,73,.14);
+  --dsw-alias-state-info-label:var(--sh-azul-500);
+  --dsw-alias-state-info-fill:rgba(77,148,255,.14);
+  --dsw-alias-state-think-label:var(--sh-violeta-500);
+  --dsw-alias-state-think-fill:rgba(163,113,247,.14);
+  /* raio e elevação: a superfície desenha a borda com a própria sombra */
+  --dsw-radius-sm:10px;
+  --dsw-radius-md:14px;
+  --dsw-radius-lg:18px;
+  --dsw-radius-panel:24px;
+  --dsw-elevation-soft:0 2px 8px rgba(0,0,0,.35);
+  --dsw-elevation-prominent:0 10px 34px rgba(0,0,0,.6);
+  /* movimento: uma duração e uma curva para tudo */
+  --ds-transition-duration:.16s;
+  --ds-transition-duration-slow:.24s;
+  --ds-ease-in-out:cubic-bezier(.4,0,.2,1);
+  /* vidro */
+  --dsw-mask-blur:blur(6px);
+  --dsw-glass:rgba(18,18,20,.72);
+  --dsw-glass-strong:rgba(10,10,11,.86);
+  --dsw-blur:blur(20px) saturate(140%);
+
+  /* ── nomes antigos, agora só apelidos da camada 2 (nada quebra) ── */
+  --bg:var(--dsw-alias-bg-base);
+  --side:var(--sh-preto-1);
+  --panel:var(--dsw-alias-bg-layer-1);
+  --panel2:var(--dsw-alias-bg-layer-2);
+  --line:var(--dsw-alias-border);
+  --line2:var(--dsw-alias-border-strong);
+  --text:var(--dsw-alias-label-primary);
+  --muted:var(--dsw-alias-label-secondary);
+  --accent:var(--dsw-alias-accent);
+  --accent-dim:var(--dsw-alias-accent-dim);
+  --ok:var(--dsw-alias-state-ok-label);
+  --warn:var(--dsw-alias-state-warn-label);
+  --danger:var(--dsw-alias-state-danger-label);
+  --r:var(--dsw-radius-md);
+  --r-lg:var(--dsw-radius-lg);
+  --r-xl:var(--dsw-radius-panel);
+  --vidro:var(--dsw-glass);
+  --vidro-forte:var(--dsw-glass-strong);
   --vidro-borda:rgba(255,255,255,.07);
-  --blur:blur(20px) saturate(140%);
+  --blur:var(--dsw-blur);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -1097,4 +1173,169 @@ button:disabled{opacity:.5;cursor:not-allowed}
   content:"";position:absolute;left:0;right:0;bottom:0;height:26px;pointer-events:none;
   background:linear-gradient(to top,rgba(0,0,0,.55),transparent);
   border-radius:0 0 var(--r) var(--r);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COMPONENTES COPIADOS DO DEEPSEEK HARNESS (MIT)
+   Receitas deles, adaptadas ao tema do Shark. Cada bloco diz o que foi
+   aproveitado, para dar para conferir na referência.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── PILL (ui-primitives/Pill.module.css) ──
+   Altura fixa de 24px, raio 999px, fundo na camada 2 e rótulo secundário.
+   A pílula ativa SÓ troca de fundo e ganha um anel interno — nada de borda
+   externa, que mudaria a altura e faria a linha "pular" ao alternar. */
+.sh-pill{
+  display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px;
+  border:0;border-radius:999px;font-size:11.5px;line-height:18px;
+  color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);
+  white-space:nowrap;
+}
+.sh-pill.interactive{cursor:pointer}
+.sh-pill.interactive:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.sh-pill.active{
+  color:var(--dsw-alias-label-primary);background:var(--dsw-alias-state-info-fill);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-accent) 45%, transparent);
+}
+/* variações de estado, usando o par rótulo/preenchimento dos tokens */
+.sh-pill.ok{color:var(--dsw-alias-state-ok-label);background:var(--dsw-alias-state-ok-fill)}
+.sh-pill.warn{color:var(--dsw-alias-state-warn-label);background:var(--dsw-alias-state-warn-fill)}
+.sh-pill.danger{color:var(--dsw-alias-state-danger-label);background:var(--dsw-alias-state-danger-fill)}
+
+/* ── CONTROLE SEGMENTADO com indicador deslizante (SegmentedControl.module.css) ──
+   O truque deles, que eu copiei: o indicador calcula a posição com
+   `--dsh-segmentos` e `--dsh-ativo` (números que o JS põe no elemento), sem
+   medir nada no DOM. Um indicador só, que desliza — em vez de re-estilizar cada
+   aba e o estado visual mudar de lugar a cada clique. */
+.sh-seg{
+  /* align-self: sem isso, como filho de uma coluna flex, o controle estica até a
+     largura toda (871px) em vez de abraçar os rótulos, que é o desenho deles */
+  align-self:flex-start;
+  position:relative;display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;
+  gap:2px;padding:4px;border-radius:var(--dsw-radius-md);
+  background:var(--dsw-alias-interactive-bg-hover);
+  --dsh-segmentos:1;--dsh-ativo:0;
+}
+.sh-seg .sh-seg-indicador{
+  position:absolute;top:4px;left:4px;
+  width:calc((100% - 8px - 2px * (var(--dsh-segmentos) - 1)) / var(--dsh-segmentos));
+  height:calc(100% - 8px);border-radius:var(--dsw-radius-sm);
+  background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-elevation-soft);
+  transform:translateX(calc(var(--dsh-ativo) * (100% + 2px)));
+  transition:transform var(--ds-transition-duration) var(--ds-ease-in-out);
+  pointer-events:none;
+}
+.sh-seg > button{
+  position:relative;z-index:1;height:28px;padding:0 16px;border:0;background:none;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;border-radius:var(--dsw-radius-sm);white-space:nowrap;
+  transition:color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+.sh-seg > button[aria-selected="true"]{color:var(--dsw-alias-label-primary)}
+.sh-seg > button:hover{color:var(--dsw-alias-label-primary)}
+
+/* ── LINHA DE DISCLOSURE (DisclosureRow.module.css) ──
+   Ritmo deles: caixa de ícone de 16px, 6px de respiro, título 13px numa linha
+   de 24px. A cor é a terciária e SOBE para secundária no hover — o convite ao
+   clique é a cor, não um fundo. */
+.sh-disc{
+  display:flex;align-items:center;gap:6px;height:24px;width:100%;
+  color:var(--dsw-alias-label-tertiary);font-size:12.5px;
+  background:none;border:0;font-family:inherit;text-align:left;
+  transition:color 100ms ease;cursor:pointer;
+}
+.sh-disc:hover{color:var(--dsw-alias-label-secondary)}
+.sh-disc .sh-disc-ico{
+  flex:none;width:16px;height:16px;display:inline-flex;align-items:center;
+  justify-content:center;font-size:11px;
+}
+.sh-disc .sh-disc-seta{
+  transition:transform var(--ds-transition-duration) var(--ds-ease-in-out);
+  font-size:10px;opacity:.7;
+}
+.sh-disc[aria-expanded="true"] .sh-disc-seta{transform:rotate(90deg)}
+
+/* ── TEXTO COM BRILHO PASSANDO (TextShimmer.module.css) ──
+   Enquanto o modelo trabalha. A receita deles: uma cópia do texto por cima,
+   recortada por uma máscara em diagonal (105°) que varre da esquerda para a
+   direita. `overflow: clip` para a varredura não aumentar a área rolável. */
+.sh-shimmer{position:relative;display:inline-grid;width:max-content;max-width:100%}
+.sh-shimmer .sh-shimmer-txt{color:var(--dsw-alias-label-tertiary)}
+.sh-shimmer .sh-shimmer-deco{
+  position:absolute;inset:0;overflow:clip;pointer-events:none;user-select:none;
+}
+.sh-shimmer .sh-shimmer-varre{
+  position:absolute;inset:0;overflow:hidden;color:var(--dsw-alias-label-primary);
+  -webkit-mask-image:linear-gradient(105deg,transparent 0%,#000 40% 60%,transparent 100%);
+  mask-image:linear-gradient(105deg,transparent 0%,#000 40% 60%,transparent 100%);
+  transform:translateX(-100%);
+  animation:sh-varredura 1.6s var(--ds-ease-in-out) infinite;
+}
+@keyframes sh-varredura{to{transform:translateX(100%)}}
+
+/* ── INDICADOR DE CONEXÃO (ConnectionIndicator.module.css) ──
+   Pílula de estado, 28px de altura, e a borda sai de `color-mix` com o próprio
+   rótulo — assim aviso/erro/ok compartilham a mesma receita e só trocam tokens. */
+.sh-conexao{
+  display:inline-grid;grid-template-columns:8px max-content;align-items:center;
+  column-gap:6px;height:26px;padding:0 9px;box-sizing:border-box;
+  border:1px solid transparent;border-radius:var(--dsw-radius-sm);
+  font-size:11.5px;font-weight:500;white-space:nowrap;
+  transition:background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+             color var(--ds-transition-duration) var(--ds-ease-in-out),
+             border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+.sh-conexao .sh-conexao-ponto{width:7px;height:7px;border-radius:50%;background:currentColor}
+.sh-conexao.ok{
+  background:var(--dsw-alias-state-ok-fill);color:var(--dsw-alias-state-ok-label);
+  border-color:color-mix(in srgb, var(--dsw-alias-state-ok-label) 20%, transparent);
+}
+.sh-conexao.aviso{
+  background:var(--dsw-alias-state-warn-fill);color:var(--dsw-alias-state-warn-label);
+  border-color:color-mix(in srgb, var(--dsw-alias-state-warn-label) 20%, transparent);
+}
+.sh-conexao.erro{
+  background:var(--dsw-alias-state-danger-fill);color:var(--dsw-alias-state-danger-label);
+  border-color:color-mix(in srgb, var(--dsw-alias-state-danger-label) 20%, transparent);
+}
+
+/* ── MEDIDOR DE CONTEXTO (ContextMeter.module.css) ──
+   Quanto da janela de contexto daquela conversa já foi usado. Fica em amarelo
+   passando de 70% e vermelho passando de 90% — antes de o provedor cortar. */
+.sh-medidor{display:flex;flex-direction:column;gap:5px;min-width:130px}
+.sh-medidor-topo{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px}
+.sh-medidor-topo .rot{color:var(--dsw-alias-label-tertiary)}
+.sh-medidor-topo .val{color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+.sh-medidor-trilha{
+  height:5px;border-radius:999px;background:var(--dsw-alias-interactive-bg-active);overflow:hidden;
+}
+.sh-medidor-barra{
+  height:100%;border-radius:999px;background:var(--dsw-alias-accent);
+  transition:width var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+.sh-medidor.aviso .sh-medidor-barra{background:var(--dsw-alias-state-warn-label)}
+.sh-medidor.cheio .sh-medidor-barra{background:var(--dsw-alias-state-danger-label)}
+
+/* ── NAVEGADOR DE TURNOS (TurnNavigator) ──
+   Botões de anterior/próximo que só aparecem quando há mais de um turno. */
+.sh-nav-turnos{
+  position:absolute;right:14px;bottom:96px;z-index:30;
+  display:flex;flex-direction:column;gap:6px;opacity:0;transition:opacity .2s;
+}
+.sh-nav-turnos.visivel{opacity:1}
+.sh-nav-turnos button{
+  width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--dsw-glass-strong);-webkit-backdrop-filter:var(--dsw-blur);backdrop-filter:var(--dsw-blur);
+  border:1px solid var(--dsw-alias-border);color:var(--dsw-alias-label-secondary);
+  font-size:13px;cursor:pointer;box-shadow:var(--dsw-elevation-soft);
+}
+.sh-nav-turnos button:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-strong)}
+.sh-nav-turnos button:disabled{opacity:.35;cursor:default}
+/* marca visual no turno para onde o usuário pulou */
+.turn.destacado{animation:sh-destaca 1.2s ease-out}
+@keyframes sh-destaca{from{background:var(--dsw-alias-state-info-fill)}to{background:transparent}}
+
+@media(prefers-reduced-motion:reduce){
+  .sh-shimmer .sh-shimmer-varre{animation:none;opacity:0}
+  .turn.destacado{animation:none}
 }

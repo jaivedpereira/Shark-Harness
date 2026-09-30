@@ -38,9 +38,12 @@
     </nav>
 
     <div class="side-foot">
+      <div class="sh-conexao" id="conexao" title="estado do servidor">
+        <span class="sh-conexao-ponto"></span><span id="conexaoTxt">conectando…</span>
+      </div>
       <div class="line" id="pillPlat">—</div>
       <div class="line" id="pillTools">—</div>
-      <div class="line llm" id="llmLine"><span class="dot" id="llmState"></span><span id="llmText">verificando…</span></div>
+      <div class="llm" id="llmLine"><span class="dot" id="llmState"></span><span id="llmText">verificando…</span></div>
     </div>
   </aside>
 
@@ -94,6 +97,12 @@
         <button class="primary" id="btnEnviar" type="submit">Enviar</button>
         <button class="ghost parar" id="btnParar" type="button" style="display:none">Parar</button>
       </form>
+
+      <!-- navegador de turnos (ideia do TurnNavigator do DeepSeek Harness) -->
+      <div class="sh-nav-turnos" id="navTurnos">
+        <button type="button" id="turnoAnterior" title="turno anterior">↑</button>
+        <button type="button" id="turnoProximo" title="próximo turno">↓</button>
+      </div>
     </section>
 
     <!-- ── Ferramentas + Loja + Plugins ── -->
@@ -103,10 +112,15 @@
         <p id="toolsSub">Clique numa ferramenta para montar os argumentos e executar de verdade.</p>
       </header>
 
-      <div class="seg" id="toolsSeg">
-        <button class="seg-item active" data-seg="list">Ferramentas</button>
-        <button class="seg-item" data-seg="loja">Loja<span class="badge" id="lojaBadge">0</span></button>
-        <button class="seg-item" data-seg="plugins">Plugins</button>
+      <!-- seletor segmentado com indicador deslizante (receita do
+           SegmentedControl do DeepSeek Harness): um indicador só, que se move por
+           cálculo de CSS a partir de --dsh-segmentos / --dsh-ativo -->
+      <div class="sh-seg" id="toolsSeg" role="tablist" aria-label="Ferramentas, loja e plugins"
+           style="--dsh-segmentos:3;--dsh-ativo:0">
+        <span class="sh-seg-indicador" aria-hidden="true"></span>
+        <button role="tab" aria-selected="true" data-seg="list" data-i="0">Ferramentas</button>
+        <button role="tab" aria-selected="false" data-seg="loja" data-i="1">Loja<span class="badge" id="lojaBadge">0</span></button>
+        <button role="tab" aria-selected="false" data-seg="plugins" data-i="2">Plugins</button>
       </div>
 
       <!-- 1) ferramentas -->
@@ -318,6 +332,14 @@
       <div class="card">
         <h3>Aparência</h3>
         <div class="row">
+          <label>Tecla Enter no campo de digitar
+            <select id="cfgEnter">
+              <option value="enviar">Enter envia · Shift+Enter quebra linha</option>
+              <option value="quebrar">Enter quebra linha · Ctrl+Enter envia</option>
+            </select>
+            <span class="hint">Vale só neste aparelho. Se você escreve mensagens longas,
+            prefira a segunda — aí o Enter só desce a linha.</span>
+          </label>
           <label>Tamanho dos itens da barra de baixo
             <select id="cfgBarra">
               <option value="normal">Normal — ícones e rótulos completos</option>

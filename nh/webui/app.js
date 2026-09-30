@@ -25,10 +25,15 @@ async function api(path, opts = {}) {
 
 /* ───────────────── estado geral ───────────────── */
 async function loadState() {
+  const t0 = performance.now();
   try {
     STATE = await api("/api/state");
+    ULTIMA_LATENCIA = Math.round(performance.now() - t0);
+    // mostra a latência: "ok" sozinho não diz se está rápido ou arrastando
+    pintarConexao("ok", `servidor ok · ${ULTIMA_LATENCIA}ms`);
   } catch (e) {
     $("#llmText").textContent = "sem conexão com o servidor";
+    pintarConexao("erro", "servidor fora do ar");
     return;
   }
   // blindagem: um elemento que mude de nome não pode derrubar o resto da interface
@@ -313,7 +318,11 @@ function addTurn() {
   const t = el("div", "turn" + (PREF.escondido ? " closed" : ""));
   const head = el("div", "turn-head");
   const btn = el("button", "turn-toggle");
-  btn.innerHTML = '<span class="chev"></span><span class="ttxt">pensando…</span>';
+  btn.innerHTML = '<span class="chev"></span>' +
+    // texto com brilho passando enquanto trabalha (receita do TextShimmer deles)
+    '<span class="sh-shimmer"><span class="sh-shimmer-txt">pensando…</span>' +
+    '<span class="sh-shimmer-deco" aria-hidden="true">' +
+    '<span class="sh-shimmer-varre">pensando…</span></span></span>';
   head.append(btn);
   const steps = el("div", "steps");
   const meta = el("div", "turn-meta");
@@ -332,7 +341,8 @@ function resumirTurno(turno, dados) {
   const t = turno.t;
   const n = t.querySelectorAll(".step").length;
   const d = dados || {};
-  const txt = t.querySelector(".ttxt");
+  // o cabeçalho nasce com o brilho de "pensando…"; aqui ele vira o resumo seco
+  const txt = t.querySelector(".ttxt") || t.querySelector(".sh-shimmer-txt");
   const partes = [];
   if (n) partes.push(`${n} passo${n > 1 ? "s" : ""}`);
   if (d.ferramentas && d.ferramentas.length) {
@@ -348,11 +358,36 @@ function resumirTurno(turno, dados) {
       `<span title="tokens gerados pelo modelo">↓ ${fmtNum(d.completion_tokens || 0)}</span>` +
       `<span title="chamadas ao modelo">${d.rodadas || 1} rodada(s)</span>` +
       `<span title="${esc(nomeModelo)}">${esc(curto)}</span>`;
+    // medidor de contexto: quanto da janela do modelo esta conversa já ocupou
+    turno.t.appendChild(medidorContexto(d));
   }
   if (d.ferramentas && d.ferramentas.length) {
-    turno.t.appendChild(el("div", "turn-tools", d.ferramentas.join(" · ")));
+    const p = el("div", "turn-tools");
+    d.ferramentas.forEach((f) => p.append(el("span", "sh-pill", esc(f))));
+    turno.t.appendChild(p);
   }
 }
+
+/* Medidor de contexto (ideia do ContextMeter do DeepSeek Harness):
+   mostra o quanto da janela do modelo a conversa já encheu. Passa a avisar em
+   amarelo (>70%) e vermelho (>90%) — antes de o provedor cortar a conversa. */
+function medidorContexto(d) {
+  const usado = Number(d.prompt_tokens || 0);
+  const limite = Number(d.contexto_limite || d.limite_contexto || 0) || LIMITE_CONTEXTO;
+  const pct = Math.min(100, Math.round((usado / limite) * 100));
+  const cls = pct >= 90 ? " cheio" : pct >= 70 ? " aviso" : "";
+  const box = el("div", "sh-medidor" + cls);
+  box.title = `${usado.toLocaleString("pt-BR")} de ~${limite.toLocaleString("pt-BR")} tokens ` +
+              `da janela de contexto (${pct}%)`;
+  box.innerHTML =
+    `<div class="sh-medidor-topo"><span class="rot">contexto</span>` +
+    `<span class="val">${pct}%</span></div>` +
+    `<div class="sh-medidor-trilha"><div class="sh-medidor-barra" style="width:${pct}%"></div></div>`;
+  return box;
+}
+
+/* janela de contexto assumida quando o provedor não informa (a maioria não informa) */
+let LIMITE_CONTEXTO = 128000;
 
 /* ícone e rótulo de cada tipo de passo, na linha do tempo */
 const PASSO_ICO = { chamada: "→", resultado: "✓", erro: "✕", info: "i", raciocinio: "✦" };
@@ -510,6 +545,8 @@ async function enviar(texto, repetir) {
     if (turno.live) turno.live.remove();
     bolhaResposta(turno, respostaFinal || "(sem resposta)");
     resumirTurno(turno, tokens);
+    TURNO_ATUAL = turnosNaTela().length - 1;
+    atualizarNavTurnos();
     if (SESSAO_ATUAL) carregarSessoes();
   } catch (err) {
     if (sp.parentNode) sp.remove();
@@ -543,13 +580,7 @@ $("#btnParar").addEventListener("click", () => {
   if (ENVIANDO) ENVIANDO.abort();
 });
 
-/* Enter envia; Shift+Enter quebra linha */
-$("#prompt").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    $("#formAgent").dispatchEvent(new Event("submit"));
-  }
-});
+/* (o Enter agora é tratado lá embaixo, respeitando a preferência do usuário) */
 
 $("#suggest").addEventListener("click", (e) => {
   const b = e.target.closest("button");
@@ -559,12 +590,6 @@ $("#suggest").addEventListener("click", (e) => {
 });
 
 const ta = $("#prompt");
-ta.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    $("#formAgent").dispatchEvent(new Event("submit"));
-  }
-});
 ta.addEventListener("input", () => {
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 150) + "px";
@@ -1006,9 +1031,14 @@ function renderPlugins() {
 
 /* troca de aba dentro de Ferramentas */
 $("#toolsSeg").addEventListener("click", (e) => {
-  const b = e.target.closest(".seg-item");
+  const b = e.target.closest("button[data-seg]");
   if (!b) return;
-  document.querySelectorAll("#toolsSeg .seg-item").forEach((x) => x.classList.toggle("active", x === b));
+  // o indicador desliza por cálculo: só troco o índice, nada é medido no DOM
+  const seg = $("#toolsSeg");
+  seg.style.setProperty("--dsh-ativo", b.dataset.i || 0);
+  [...seg.querySelectorAll("button[data-seg]")].forEach((x) => {
+    x.setAttribute("aria-selected", x === b ? "true" : "false");
+  });
   const alvo = "seg-" + b.dataset.seg;
   document.querySelectorAll("#view-tools .seg-view").forEach((v) => v.classList.toggle("active", v.id === alvo));
   const subs = {
@@ -1869,9 +1899,90 @@ async function testarTudo() {
 }
 $("#btnSaude").addEventListener("click", testarTudo);
 
+/* ═══════════════════ estado da conexão (ConnectionIndicator) ═══════════════════
+   Receita do DeepSeek Harness: uma pílula de estado cuja borda sai de
+   `color-mix` com o próprio rótulo. Aqui ela responde "o servidor está vivo?" —
+   antes o usuário só descobria quando mandava mensagem e nada acontecia. */
+function pintarConexao(estado, texto) {
+  const c = $("#conexao");
+  if (!c) return;
+  c.className = "sh-conexao " + estado;
+  $("#conexaoTxt").textContent = texto;
+  // "ok" sozinho não diz nada: o title carrega o endereço e quando foi a última resposta
+  const quando = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  c.title = estado === "ok"
+    ? `${location.origin} — respondendo (checado às ${quando})`
+    : `não consegui falar com o servidor em ${location.origin} (última tentativa às ${quando})`;
+}
+
+/* quanto tempo o servidor levou para responder a última checagem */
+let ULTIMA_LATENCIA = 0;
+
+/* ═══════════════════════ navegador de turnos ═══════════════════════
+   Ideia do TurnNavigator deles: numa conversa longa, pular de resposta em
+   resposta em vez de rolar às cegas. */
+let TURNO_ATUAL = -1;
+
+function turnosNaTela() {
+  return [...document.querySelectorAll("#chat .turn")];
+}
+
+function irParaTurno(i) {
+  const lista = turnosNaTela();
+  if (!lista.length) return;
+  TURNO_ATUAL = Math.max(0, Math.min(i, lista.length - 1));
+  const alvo = lista[TURNO_ATUAL];
+  alvo.scrollIntoView({ block: "center", behavior: "smooth" });
+  alvo.classList.remove("destacado");
+  void alvo.offsetWidth; // reinicia a animação do destaque
+  alvo.classList.add("destacado");
+  atualizarNavTurnos();
+}
+
+function atualizarNavTurnos() {
+  const lista = turnosNaTela();
+  const nav = $("#navTurnos");
+  if (!nav) return;
+  nav.classList.toggle("visivel", lista.length > 1);
+  if (TURNO_ATUAL < 0) TURNO_ATUAL = lista.length - 1;
+  $("#turnoAnterior").disabled = TURNO_ATUAL <= 0;
+  $("#turnoProximo").disabled = TURNO_ATUAL >= lista.length - 1;
+}
+
+$("#turnoAnterior").addEventListener("click", () => irParaTurno(TURNO_ATUAL - 1));
+$("#turnoProximo").addEventListener("click", () => irParaTurno(TURNO_ATUAL + 1));
+
+/* ═════════════════ tecla Enter: enviar ou quebrar linha ═════════════════
+   Ideia do EnterBehaviorRow deles: quem escreve mensagem longa quer Enter
+   quebrando linha, não disparando. Vale por aparelho. */
+const CHAVE_ENTER = "sh_enter";
+
+function aplicarEnter() {
+  const modo = localStorage.getItem(CHAVE_ENTER) || "enviar";
+  const ta = $("#prompt");
+  if (ta) {
+    ta.placeholder = modo === "enviar"
+      ? "O que eu faço agora, chefe? (Enter envia · Shift+Enter quebra linha)"
+      : "O que eu faço agora, chefe? (Enter quebra linha · Ctrl+Enter envia)";
+  }
+  const sel = $("#cfgEnter");
+  if (sel) sel.value = modo;
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target && e.target.id === "cfgEnter") {
+    localStorage.setItem(CHAVE_ENTER, e.target.value);
+    aplicarEnter();
+    toast(e.target.value === "enviar" ? "Enter agora envia a mensagem"
+                                       : "Enter agora quebra linha", "ok");
+  }
+});
+
 /* ───────────────── init ───────────────── */
 loadState();
 carregarLoja();
 carregarSessoes();
 renderSessaoBar();
+aplicarEnter();
+atualizarNavTurnos();
 setInterval(loadState, 20000);

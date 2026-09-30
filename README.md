@@ -4,6 +4,26 @@ Um **agente de tarefas** com arquitetura **tudo-é-plugin** — inspirado no
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), mas em Python,
 sem dependências obrigatórias e rodando igual no **PC**, no **Linux** e no **Termux**.
 
+## 🙏 Créditos de design
+
+O [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT, *"Everything is a
+Plugin"*) é a referência declarada deste projeto. Dele vieram **adaptadas ao tema do Shark**
+(azul e preto) as seguintes peças — o código é nosso, em JS/CSS puro, mas a **linguagem
+visual** e as ideias são deles:
+
+| o que foi aproveitado | de onde (MIT) |
+|---|---|
+| **Tokens em três camadas**: primitivo → alias semântico → específico | `packages/client/ui-primitives` |
+| Nomes de token `--dsw-alias-*` / `--ds-*` mantidos iguais aos deles, de propósito | idem |
+| **Pílula** de 24px, com anel interno (e não borda) no estado ativo | `Pill.module.css` |
+| **Seletor segmentado** com indicador deslizante calculado só por CSS | `SegmentedControl.module.css` |
+| **Linha de disclosure**: caixa de 16px, cor que sobe no hover | `DisclosureRow.module.css` |
+| **Texto com brilho** varrendo em diagonal (`mask-image` a 105°) | `TextShimmer.module.css` |
+| **Indicador de conexão** com borda em `color-mix` do próprio rótulo | `ConnectionIndicator.module.css` |
+| **Medidor de contexto** e **navegador de turnos** | `ContextMeter` / `TurnNavigator` |
+| **Tecla Enter** configurável (enviar ou quebrar linha) | `EnterBehaviorRow.module.css` |
+
+
 Ele **programa** (escreve e roda código), **mexe no dispositivo** (shell, arquivos,
 notificação, clipboard, screenshot) e **executa tarefas agendadas** sozinho, no
 horário que você definir.
